@@ -293,4 +293,39 @@ RSpec.describe Clacky::UI2::ProgressHandle do
       expect(unreg[2]).to include("Compressing")
     end
   end
+
+  describe "token-count metadata rendering" do
+    it "appends ↑in ↓out when input/output token counts are present" do
+      h = described_class.new(owner: owner, message: "Thinking", tick_interval: 999)
+      h.start
+      h.update(metadata: { input_tokens: 12, output_tokens: 7 })
+
+      render = owner.events.reverse.find { |e| e[0] == :render }
+      expect(render[2]).to include("↑12")
+      expect(render[2]).to include("↓7")
+      h.finish
+    end
+
+    it "compacts thousands as 1.2k and 10k+" do
+      h = described_class.new(owner: owner, message: "Thinking", tick_interval: 999)
+      h.start
+      h.update(metadata: { input_tokens: 1234, output_tokens: 12_345 })
+
+      render = owner.events.reverse.find { |e| e[0] == :render }
+      expect(render[2]).to include("↑1.2k")
+      expect(render[2]).to include("↓12k")
+      h.finish
+    end
+
+    it "omits token suffix when only attempt/total metadata is present" do
+      h = described_class.new(owner: owner, message: "Retrying", tick_interval: 999)
+      h.start
+      h.update(metadata: { attempt: 2, total: 3 })
+
+      render = owner.events.reverse.find { |e| e[0] == :render }
+      expect(render[2]).to include("[2/3]")
+      expect(render[2]).not_to include("↑")
+      h.finish
+    end
+  end
 end

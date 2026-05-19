@@ -119,20 +119,39 @@ module Clacky
     #   signal metric — see docs). When we migrate to streaming later, this
     #   same `ttft_ms` field will start carrying the *actual* first-token
     #   latency without any schema change.
-    def send_messages_with_tools(messages, model:, tools:, max_tokens:, enable_caching: false)
+    # @param on_chunk [Proc, nil] optional streaming progress callback.
+    #   Receives keyword args { input_tokens:, output_tokens: } with cumulative
+    #   token counts. When nil, behaves exactly as the historical non-streaming
+    #   path. When given but streaming is not yet wired for the active provider,
+    #   a single synthetic invocation is fired after the response is received,
+    #   so UI plumbing can be exercised end-to-end without the proxy work.
+    def send_messages_with_tools(messages, model:, tools:, max_tokens:, enable_caching: false, on_chunk: nil)
       caching_enabled = enable_caching && supports_prompt_caching?(model)
       cloned = deep_clone(messages)
 
+      streaming_used = false
       t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       response =
         if bedrock?
-          send_bedrock_request(cloned, model, tools, max_tokens, caching_enabled)
+          streaming_used = !on_chunk.nil?
+          send_bedrock_request(cloned, model, tools, max_tokens, caching_enabled, on_chunk: on_chunk)
         elsif anthropic_format?
-          send_anthropic_request(cloned, model, tools, max_tokens, caching_enabled)
+          streaming_used = !on_chunk.nil?
+          send_anthropic_request(cloned, model, tools, max_tokens, caching_enabled, on_chunk: on_chunk)
         else
-          send_openai_request(cloned, model, tools, max_tokens, caching_enabled)
+          streaming_used = !on_chunk.nil?
+          send_openai_request(cloned, model, tools, max_tokens, caching_enabled, on_chunk: on_chunk)
         end
       t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+      if on_chunk && !streaming_used
+        usage = response[:usage] || {}
+        safe_invoke_on_chunk(
+          on_chunk,
+          input_tokens:  usage[:prompt_tokens].to_i,
+          output_tokens: usage[:completion_tokens].to_i
+        )
+      end
 
       duration_ms = ((t1 - t0) * 1000).round
       # Throughput is only meaningful with a reasonable output size; below ~10
@@ -149,7 +168,7 @@ module Clacky
         tps:         tps,
         model:       model,
         measured_at: Time.now.to_f,
-        streaming:   false              # future flag — true when we migrate
+        streaming:   streaming_used
       }
       response
     end
@@ -195,14 +214,39 @@ module Clacky
 
     # ── Bedrock Converse request / response ───────────────────────────────────
 
-    def send_bedrock_request(messages, model, tools, max_tokens, caching_enabled)
-      body     = MessageFormat::Bedrock.build_request_body(messages, model, tools, max_tokens, caching_enabled)
+    def send_bedrock_request(messages, model, tools, max_tokens, caching_enabled, on_chunk: nil)
+      body = MessageFormat::Bedrock.build_request_body(messages, model, tools, max_tokens, caching_enabled)
+      return send_bedrock_stream_request(body, model, on_chunk) if on_chunk
+
       response = bedrock_connection.post(bedrock_endpoint(model)) { |r| r.body = body.to_json }
 
       raise_error(response) unless response.status == 200
       check_html_response(response)
       parsed_body = safe_json_parse(response.body, context: "LLM response")
       MessageFormat::Bedrock.parse_response(parsed_body)
+    end
+
+    # Streaming variant for Bedrock Converse.
+    # Posts to /model/{m}/converse-stream with stream:true; the proxy returns
+    # SSE frames whose `event` is the Bedrock event-type and whose `data` is
+    # the raw Bedrock event JSON. We accumulate frames into a synthetic
+    # non-streaming response and feed it back through the existing parser so
+    # downstream code is identical.
+    private def send_bedrock_stream_request(body, model, on_chunk)
+      stream_body = body.merge(stream: true)
+      aggregator = BedrockStreamAggregator.new(on_chunk: on_chunk)
+      sse_buf = +""
+
+      response = bedrock_connection.post(bedrock_stream_endpoint(model)) do |req|
+        req.body = stream_body.to_json
+        req.options.on_data = proc do |chunk, _bytes_received, _env|
+          sse_buf << chunk
+          drain_sse_frames(sse_buf) { |event, data| aggregator.handle(event, data) }
+        end
+      end
+
+      raise_error(response) unless response.status == 200
+      MessageFormat::Bedrock.parse_response(aggregator.to_h)
     end
 
     def parse_simple_bedrock_response(response)
@@ -216,17 +260,37 @@ module Clacky
 
     # ── Anthropic request / response ──────────────────────────────────────────
 
-    def send_anthropic_request(messages, model, tools, max_tokens, caching_enabled)
+    def send_anthropic_request(messages, model, tools, max_tokens, caching_enabled, on_chunk: nil)
       # Apply cache_control to the message that marks the cache breakpoint
       messages = apply_message_caching(messages) if caching_enabled
 
-      body     = MessageFormat::Anthropic.build_request_body(messages, model, tools, max_tokens, caching_enabled)
+      body = MessageFormat::Anthropic.build_request_body(messages, model, tools, max_tokens, caching_enabled)
+      return send_anthropic_stream_request(body, on_chunk) if on_chunk
+
       response = anthropic_connection.post(anthropic_messages_path) { |r| r.body = body.to_json }
 
       raise_error(response) unless response.status == 200
       check_html_response(response)
       parsed_body = safe_json_parse(response.body, context: "LLM response")
       MessageFormat::Anthropic.parse_response(parsed_body)
+    end
+
+    private def send_anthropic_stream_request(body, on_chunk)
+      stream_body = body.merge(stream: true)
+      aggregator = AnthropicStreamAggregator.new(on_chunk: on_chunk)
+      sse_buf = +""
+
+      response = anthropic_connection.post(anthropic_messages_path) do |req|
+        req.headers["Accept"] = "text/event-stream"
+        req.body = stream_body.to_json
+        req.options.on_data = proc do |chunk, _bytes_received, _env|
+          sse_buf << chunk
+          drain_sse_frames(sse_buf) { |event, data| aggregator.handle(event, data) }
+        end
+      end
+
+      raise_error(response) unless response.status == 200
+      MessageFormat::Anthropic.parse_response(aggregator.to_h)
     end
 
     def parse_simple_anthropic_response(response)
@@ -237,22 +301,45 @@ module Clacky
 
     # ── OpenAI request / response ─────────────────────────────────────────────
 
-    def send_openai_request(messages, model, tools, max_tokens, caching_enabled)
+    def send_openai_request(messages, model, tools, max_tokens, caching_enabled, on_chunk: nil)
       # Apply cache_control markers to messages when caching is enabled.
       # OpenRouter proxies Claude with the same cache_control field convention as Anthropic direct.
       messages = apply_message_caching(messages) if caching_enabled
 
-      body     = MessageFormat::OpenAI.build_request_body(
+      body = MessageFormat::OpenAI.build_request_body(
         messages, model, tools, max_tokens, caching_enabled,
         vision_supported: @vision_supported
       )
+      return send_openai_stream_request(body, on_chunk) if on_chunk
+
       response = openai_connection.post("chat/completions") { |r| r.body = body.to_json }
 
       raise_error(response) unless response.status == 200
       check_html_response(response)
-      
+
       parsed_body = safe_json_parse(response.body, context: "LLM response")
       MessageFormat::OpenAI.parse_response(parsed_body)
+    end
+
+    # Streaming variant for OpenAI-compatible chat completions (DeepSeek/OpenRouter
+    # via platform/llm_proxy). Uses Faraday's on_data hook to consume SSE frames,
+    # accumulates them, and reconstructs the non-streaming JSON response shape so
+    # MessageFormat::OpenAI.parse_response works unchanged.
+    private def send_openai_stream_request(body, on_chunk)
+      stream_body = body.merge(stream: true, stream_options: { include_usage: true })
+      aggregator = OpenAIStreamAggregator.new(on_chunk: on_chunk)
+      sse_buf = +""
+
+      response = openai_connection.post("chat/completions") do |req|
+        req.body = stream_body.to_json
+        req.options.on_data = proc do |chunk, _bytes_received, _env|
+          sse_buf << chunk
+          drain_sse_frames(sse_buf) { |_event, data| aggregator.handle(data) }
+        end
+      end
+
+      raise_error(response) unless response.status == 200
+      MessageFormat::OpenAI.parse_response(aggregator.to_h)
     end
 
     def parse_simple_openai_response(response)
@@ -318,6 +405,33 @@ module Clacky
     # Bedrock Converse API endpoint path for a given model ID.
     def bedrock_endpoint(model)
       "/model/#{model}/converse"
+    end
+
+    # Bedrock Converse streaming endpoint path.
+    private def bedrock_stream_endpoint(model)
+      "/model/#{model}/converse-stream"
+    end
+
+    # Pull complete SSE frames out of a buffer and yield them as (event, data).
+    # An SSE frame ends at a blank line ("\n\n"); incomplete trailing data
+    # stays in the buffer for the next chunk. Frames without an explicit
+    # `event:` line use the default "message" type per the SSE spec.
+    private def drain_sse_frames(buf)
+      while (sep = buf.index("\n\n"))
+        frame = buf.slice!(0, sep + 2)
+        event = "message"
+        data_lines = []
+        frame.each_line do |line|
+          line = line.chomp
+          if line.start_with?("event:")
+            event = line.sub(/^event:\s*/, "")
+          elsif line.start_with?("data:")
+            data_lines << line.sub(/^data:\s*/, "")
+          end
+        end
+        next if data_lines.empty?
+        yield event, data_lines.join("\n")
+      end
     end
 
     def bedrock_connection
@@ -475,6 +589,18 @@ module Clacky
       raise RetryableError, "[LLM] Failed to parse #{context}: #{error_detail}. " \
                            "This usually means the AI service returned incomplete or corrupted data. " \
                            "The request will be retried automatically."
+    end
+
+    # ── Streaming helpers ─────────────────────────────────────────────────────
+
+    # Invoke the user's on_chunk callback in a way that never lets a callback
+    # error tear down the LLM request. Streaming chunks are best-effort UI
+    # updates; a buggy progress renderer must not abort an in-flight call.
+    private def safe_invoke_on_chunk(on_chunk, **kwargs)
+      return unless on_chunk
+      on_chunk.call(**kwargs)
+    rescue => e
+      Clacky::Logger.warn("[on_chunk] callback raised #{e.class}: #{e.message}")
     end
 
     # ── Utilities ─────────────────────────────────────────────────────────────

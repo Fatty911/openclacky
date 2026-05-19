@@ -103,7 +103,8 @@ module Clacky
             model: current_model,
             tools: tools_to_send,
             max_tokens: @config.max_tokens,
-            enable_caching: @config.enable_prompt_caching
+            enable_caching: @config.enable_prompt_caching,
+            on_chunk: build_progress_on_chunk
           )
 
           # Successful response — if we were probing, confirm primary is healthy.
@@ -747,6 +748,27 @@ module Clacky
         @ui&.show_warning(
           "Upstream response was truncated mid tool-call — asking model to use smaller steps and retrying..."
         )
+      end
+
+      # Build a streaming progress callback for Client#send_messages_with_tools.
+      # Returns nil when no UI is attached, so the client skips the streaming
+      # plumbing entirely. Callback throttles UI updates to avoid flooding the
+      # progress handle on fast streams.
+      private def build_progress_on_chunk
+        return nil unless @ui
+
+        last_emit_at = 0.0
+        min_interval = 0.05
+        ->(input_tokens:, output_tokens:) {
+          now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          return if now - last_emit_at < min_interval && output_tokens > 0
+          last_emit_at = now
+          @ui.show_progress(
+            progress_type: "thinking",
+            phase: "active",
+            metadata: { input_tokens: input_tokens, output_tokens: output_tokens }
+          )
+        }
       end
     end
   end

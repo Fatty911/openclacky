@@ -286,8 +286,32 @@ module Clacky
         if metadata && (attempt = metadata[:attempt]) && (total = metadata[:total])
           parts << "[#{attempt}/#{total}]"
         end
+        if metadata && (token_part = format_token_progress(metadata))
+          parts << token_part
+        end
         head = parts.join(" ")
         elapsed > 0 ? "#{head}… (#{elapsed}s)" : "#{head}…"
+      end
+
+      # Render LLM streaming progress as "↑1.2k ↓234" when the metadata
+      # carries token counts. Returns nil if no token info is present so
+      # the frame stays compact for non-LLM progress types.
+      private def format_token_progress(metadata)
+        input  = metadata[:input_tokens]
+        output = metadata[:output_tokens]
+        return nil if input.nil? && output.nil?
+        "↑#{compact_count(input.to_i)} ↓#{compact_count(output.to_i)}"
+      end
+
+      private def compact_count(n)
+        return n.to_s if n < 1000
+        if n < 1_000_000
+          k = n / 1000.0
+          k >= 10 ? "#{k.to_i}k" : "%.1fk" % k
+        else
+          m = n / 1_000_000.0
+          m >= 10 ? "#{m.to_i}M" : "%.1fM" % m
+        end
       end
 
       # Final frame (used by +finish+). Same as +compose_frame+ but we
