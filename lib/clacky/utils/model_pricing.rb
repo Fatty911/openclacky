@@ -352,6 +352,58 @@ module Clacky
         cache:  { write: 0.30, read: 0.06 }
       },
 
+      # Qwen (Alibaba DashScope) — USD per 1M tokens, Singapore region list price.
+      # Source: Alibaba Cloud Model Studio international pricing.
+      # Cache convention (mirrors DeepSeek/Kimi/GLM "displayed ≤ actual"):
+      #   - DashScope has two cache modes; implicit is auto-on, explicit is opt-in.
+      #     Implicit: write @ 100% input, read @ 20% input (no setup, no guarantee)
+      #     Explicit: write @ 125% input, read @ 10% input (cache_control marker)
+      #   - We bill writes at the regular input rate (matches implicit, and avoids
+      #     surprising users with the explicit 25% surcharge).
+      #   - We bill reads at 20% (implicit rate) — the conservative side; users on
+      #     explicit caching will see real bills slightly *lower* than displayed.
+      "qwen3.6-plus" => {
+        input:  { default: 0.40, over_200k: 0.40 },
+        output: { default: 2.40, over_200k: 2.40 },
+        cache:  { write: 0.40, read: 0.08 }
+      },
+
+      "qwen3.6-max" => {
+        input:  { default: 1.20, over_200k: 1.20 },
+        output: { default: 6.00, over_200k: 6.00 },
+        cache:  { write: 1.20, read: 0.24 }
+      },
+
+      "qwen3.6-27b" => {
+        input:  { default: 0.20, over_200k: 0.20 },
+        output: { default: 0.80, over_200k: 0.80 },
+        cache:  { write: 0.20, read: 0.04 }
+      },
+
+      "qwen3.6-flash" => {
+        input:  { default: 0.15, over_200k: 0.15 },
+        output: { default: 0.90, over_200k: 0.90 },
+        cache:  { write: 0.15, read: 0.03 }
+      },
+
+      "qwen-plus-latest" => {
+        input:  { default: 0.40, over_200k: 0.40 },
+        output: { default: 1.20, over_200k: 1.20 },
+        cache:  { write: 0.40, read: 0.08 }
+      },
+
+      "qwen-vl-plus" => {
+        input:  { default: 0.14, over_200k: 0.14 },
+        output: { default: 0.41, over_200k: 0.41 },
+        cache:  { write: 0.14, read: 0.028 }
+      },
+
+      "qwen-vl-max" => {
+        input:  { default: 0.52, over_200k: 0.52 },
+        output: { default: 2.08, over_200k: 2.08 },
+        cache:  { write: 0.52, read: 0.104 }
+      },
+
     }.freeze
 
     # Threshold for tiered pricing (200K tokens)
@@ -513,6 +565,25 @@ module Clacky
           "minimax-m2.5"
         when /^minimax-m2\.7$/i
           "minimax-m2.7"
+
+        # Qwen (Alibaba DashScope) — strict anchored match per registered
+        # model id in providers.rb. qwen3.6-* are the new flagship line;
+        # qwen-plus-latest is the rolling alias for the latest Qwen-Plus
+        # release; qwen-vl-* are the multimodal SKUs.
+        when /^qwen3\.6-plus$/i
+          "qwen3.6-plus"
+        when /^qwen3\.6-max$/i
+          "qwen3.6-max"
+        when /^qwen3\.6-27b$/i
+          "qwen3.6-27b"
+        when /^qwen3\.6-flash$/i
+          "qwen3.6-flash"
+        when /^qwen-plus-latest$/i
+          "qwen-plus-latest"
+        when /^qwen-vl-plus$/i
+          "qwen-vl-plus"
+        when /^qwen-vl-max$/i
+          "qwen-vl-max"
 
         # OpenAI GPT-5.x models — match various dashed/dotted/compact forms
         # (e.g. "gpt-5.5", "gpt-5-5", "gpt5.5", "gpt55")
