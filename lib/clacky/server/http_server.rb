@@ -3514,9 +3514,16 @@ module Clacky
         # If session is running, interrupt it first (mimics CLI behavior)
         if session[:status] == :running
           interrupt_session(session_id)
-          # Wait briefly for the thread to catch the interrupt and update status
-          # This ensures the agent loop exits cleanly before starting the new task
-          sleep 0.1
+
+          # Give the old thread a short window to exit cleanly.
+          # In the common case it returns within milliseconds (Thread#raise
+          # lands on a tight loop or LLM read). If it can't be reached in
+          # time (e.g. blocked in a slow subagent syscall), we proceed anyway:
+          # the agent's check_stale! checkpoints will refuse to mutate
+          # history once the new thread takes over.
+          old_thread = nil
+          @registry.with_session(session_id) { |s| old_thread = s[:thread] }
+          old_thread&.join(2)
         end
 
         agent = nil

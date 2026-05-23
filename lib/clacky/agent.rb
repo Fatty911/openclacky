@@ -781,6 +781,19 @@ module Clacky
       response
     end
 
+    # Abort the current iteration if this thread no longer owns the task.
+    # A new user message starts a fresh task on a new thread; the old thread
+    # may still be blocked inside a long-running tool (e.g. a subagent that
+    # didn't observe Thread#raise from interrupt_session). Calling this at
+    # safe checkpoints — before LLM calls and before appending tool results
+    # to history — guarantees a stale thread cannot corrupt history with
+    # tool messages that no longer have a matching assistant tool_calls.
+    private def check_stale!
+      return unless @task_thread
+      return if Thread.current == @task_thread
+      raise Clacky::AgentInterrupted, "Task superseded by a newer task on another thread"
+    end
+
     private def act(tool_calls)
       return { denied: false, feedback: nil, tool_results: [], awaiting_feedback: false } unless tool_calls
 
@@ -979,6 +992,11 @@ module Clacky
       # Add tool results as messages
       # Use Client to format results based on API type (Anthropic vs OpenAI)
       return if tool_results.empty?
+
+      # Refuse to write tool results if this thread is stale (a newer task
+      # has taken over). Otherwise the tool message would be appended with
+      # the new task's @current_task_id, orphaned from its assistant.
+      check_stale!
 
       formatted_messages = @client.format_tool_results(response, tool_results, model: current_model)
       formatted_messages.each { |msg| @history.append(msg.merge(task_id: @current_task_id)) }
