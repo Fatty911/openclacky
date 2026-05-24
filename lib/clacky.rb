@@ -126,7 +126,7 @@ require_relative "clacky/tools/terminal"
 require_relative "clacky/mcp/client"
 require_relative "clacky/mcp/virtual_skill"
 require_relative "clacky/mcp/registry"
-require_relative "clacky/tools/mcp_call"
+require_relative "clacky/mcp/skill_provider"
 require_relative "clacky/telemetry"
 require_relative "clacky/agent"
 

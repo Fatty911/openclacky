@@ -81,30 +81,37 @@ module Clacky
           @virtual_skills_cache = {}
           @servers.each do |name, spec|
             @virtual_skills_cache[name] = VirtualSkill.new(
-              server_name:      name,
-              description:      spec["description"] || default_description_for(name),
-              tool_definitions: []   # filled in lazily on first invocation
+              server_name: name,
+              description: spec["description"] || default_description_for(name)
             )
           end
           @virtual_skills_cache.values
         end
       end
 
-      # Return (and lazily refresh) the VirtualSkill for a server, with its
-      # tool_definitions populated. Called by SkillManager just before forking
-      # the subagent so the fork has the latest schemas.
+      # Return a fresh VirtualSkill for a server. The HttpServer's MCP tools
+      # endpoint uses this to satisfy probe requests; tool schemas are no
+      # longer attached to the skill itself — clients fetch them separately
+      # via /api/mcp/:name/tools.
       # @param server_name [String]
       # @return [VirtualSkill, nil]
       def virtual_skill_for(server_name)
-        client = ensure_started(server_name)
-        return nil unless client
+        return nil unless @servers.key?(server_name)
 
         spec = @servers[server_name]
         VirtualSkill.new(
-          server_name:      server_name,
-          description:      spec["description"] || default_description_for(server_name),
-          tool_definitions: client.tool_definitions
+          server_name: server_name,
+          description: spec["description"] || default_description_for(server_name)
         )
+      end
+
+      # Fetch the live tool list (and lazily cold-start the server). Used by
+      # the HttpServer for /api/mcp/:name/tools and /api/mcp/:name/probe.
+      def tool_definitions(server_name)
+        client = ensure_started(server_name)
+        return [] unless client
+
+        client.tool_definitions
       end
 
       # Execute a tool call against an MCP server. Used by Tools::McpCall.

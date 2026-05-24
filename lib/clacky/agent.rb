@@ -43,7 +43,6 @@ module Clacky
     attr_reader :session_id, :name, :history, :iterations, :total_cost, :working_dir, :created_at, :total_tasks, :todos,
                 :cache_stats, :cost_source, :ui, :skill_loader, :agent_profile,
                 :status, :error, :updated_at, :source,
-                :mcp_registry,
                 :latest_latency,  # Hash of latency metrics from the most recent LLM call (see Client#send_messages_with_tools)
                 :reasoning_effort
     attr_accessor :pinned
@@ -118,12 +117,12 @@ module Clacky
       # Skill loader for skill management (brand_config enables encrypted skill loading)
       @skill_loader = SkillLoader.new(working_dir: @working_dir, brand_config: @brand_config)
 
-      # MCP registry: loads ~/.clacky/mcp.json and (optionally) <project>/.clacky/mcp.json,
-      # exposes one VirtualSkill per configured server, and lazily spawns server
-      # processes on first use. The skill_loader merges these virtual skills so
-      # they appear in AVAILABLE SKILLS just like on-disk ones.
-      @mcp_registry = Mcp::Registry.new(working_dir: @working_dir)
-      @skill_loader.attach_virtual_skill_provider(@mcp_registry)
+      # MCP virtual skills: load mcp.json and expose one VirtualSkill per
+      # configured server in the AVAILABLE MCP SERVERS section. The agent does
+      # NOT spawn or talk to MCP server processes itself — all calls go through
+      # the local Clacky HTTP API (/api/mcp/:server/tools and /call). Subagents
+      # invoke those endpoints via curl, so MCP behaves like any other skill.
+      @skill_loader.attach_virtual_skill_provider(Mcp::SkillProvider.new(working_dir: @working_dir))
 
       # Background sync: compare remote skill versions and download updates quietly.
       # Runs in a daemon thread so Agent startup is never blocked.
@@ -896,11 +895,6 @@ module Clacky
             args[:skill_loader] = @skill_loader
           end
 
-          # Special handling for McpCall: inject agent so the tool can reach the MCP registry
-          if call[:name] == "mcp_call"
-            args[:agent] = self
-          end
-
           # Special handling for Time Machine tools: inject agent
           if ["undo_task", "redo_task", "list_tasks"].include?(call[:name])
             args[:agent] = self
@@ -1173,11 +1167,6 @@ module Clacky
       @tool_registry.register(Tools::RedoTask.new)
       @tool_registry.register(Tools::ListTasks.new)
       @tool_registry.register(Tools::Browser.new)
-
-      # mcp_call is registered only when at least one MCP server is configured.
-      # This keeps the system-prompt cache key identical for users who don't use
-      # MCP — the tool's schema costs nothing on their side.
-      @tool_registry.register(Tools::McpCall.new) if @mcp_registry&.any?
     end
 
     # Fork a subagent with specified configuration
@@ -1254,16 +1243,6 @@ module Clacky
         source: @source
       )
       subagent.instance_variable_set(:@is_subagent, true)
-
-      # Subagents share the parent's MCP registry — same processes, same tool list.
-      # This is critical for cache parity: the parent's tool registry includes
-      # mcp_call iff @mcp_registry.any?, and the subagent's must match. By sharing
-      # the registry instance, we also avoid double-spawning MCP server processes.
-      subagent.instance_variable_set(:@mcp_registry, @mcp_registry)
-      sub_registry = subagent.instance_variable_get(:@tool_registry)
-      if @mcp_registry&.any? && sub_registry && !sub_registry.tool_names.include?("mcp_call")
-        sub_registry.register(Tools::McpCall.new)
-      end
 
       # Inherit previous_total_tokens so the first iteration delta is calculated correctly
       subagent.instance_variable_set(:@previous_total_tokens, @previous_total_tokens)

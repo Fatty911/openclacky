@@ -58,7 +58,7 @@ RSpec.describe Clacky::Mcp::Registry do
   describe "#virtual_skills" do
     before { write_global_config(fake_config(description: "Hello.")) }
 
-    it "creates a fork-mode VirtualSkill per server" do
+    it "creates a fork-mode VirtualSkill per server (no tool schemas attached)" do
       reg = described_class.new(working_dir: work)
       skills = reg.virtual_skills
       expect(skills.size).to eq(1)
@@ -69,6 +69,11 @@ RSpec.describe Clacky::Mcp::Registry do
       expect(sk.fork_agent?).to eq(true)
       expect(sk.user_invocable?).to eq(true)
       expect(sk.description).to eq("Hello.")
+      # SKILL.md is generated statically — no live JSON-RPC at listing time.
+      content = sk.process_content
+      expect(content).to include("MCP Server: fake")
+      expect(content).to include("/api/mcp/fake/tools")
+      expect(content).to include("/api/mcp/fake/call")
     end
 
     it "uses a default description when none provided" do
@@ -96,48 +101,15 @@ RSpec.describe Clacky::Mcp::Registry do
       end
     end
 
-    it "fills VirtualSkill content with each tool's inputSchema" do
+    it "exposes the live tool catalog via tool_definitions" do
       reg = described_class.new(working_dir: work, idle_timeout: 0)
       begin
-        sk = reg.virtual_skill_for("fake")
-        content = sk.process_content
-        expect(content).to include("# MCP Server: fake")
-        expect(content).to include("### `echo`")
-        expect(content).to include("### `add`")
-        expect(content).to include("\"required\"")
+        defs = reg.tool_definitions("fake")
+        names = defs.map { |d| (d[:function] || d["function"])[:name] || (d[:function] || d["function"])["name"] }
+        expect(names).to include("echo", "add")
       ensure
         reg.shutdown
       end
-    end
-  end
-
-  describe "Tools::McpCall" do
-    before { write_global_config(fake_config) }
-
-    it "dispatches via the agent's mcp_registry" do
-      reg = described_class.new(working_dir: work, idle_timeout: 0)
-      begin
-        agent = Object.new
-        agent.define_singleton_method(:mcp_registry) { reg }
-        tool = Clacky::Tools::McpCall.new
-
-        result = tool.execute(server: "fake", tool: "echo",
-                              arguments: { message: "world" }, agent: agent)
-        expect(result).to eq("echo: world")
-      ensure
-        reg.shutdown
-      end
-    end
-
-    it "returns a clear error when server is not configured" do
-      reg = described_class.new(working_dir: work, idle_timeout: 0)
-      agent = Object.new
-      agent.define_singleton_method(:mcp_registry) { reg }
-      tool = Clacky::Tools::McpCall.new
-
-      result = tool.execute(server: "missing", tool: "x", arguments: {}, agent: agent)
-      expect(result).to be_a(Hash)
-      expect(result[:error]).to match(/not configured/i)
     end
   end
 end

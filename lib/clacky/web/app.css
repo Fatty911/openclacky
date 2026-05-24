@@ -8402,6 +8402,14 @@ body.setup-mode[data-theme="dark"] {
   justify-content: center;
   border: 1px solid var(--color-border-primary, var(--color-border));
 }
+.mcp-card-disabled .channel-card-identity,
+.mcp-card-disabled .mcp-cmd-block {
+  opacity: 0.55;
+}
+.mcp-card-disabled .btn-mcp-probe {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .mcp-chip {
   display: inline-block;
   font-size: 0.6875rem;

@@ -191,6 +191,9 @@ module Clacky
         )
         @browser_manager = Clacky::BrowserManager.instance
         @skill_loader    = Clacky::SkillLoader.new(working_dir: nil, brand_config: Clacky::BrandConfig.load)
+        # Lazy: process-wide MCP registry. Created on first /api/mcp/:name access
+        # so test setups that override Dir.home in before-hooks still work.
+        @mcp_registry_mutex = Mutex.new
         # Access key authentication:
         # - localhost (127.0.0.1 / ::1) is always trusted; auth is skipped entirely.
         # - Any other bind address requires CLACKY_ACCESS_KEY env var.
@@ -264,8 +267,10 @@ module Clacky
           end
           t1 = Thread.new { @channel_manager.stop rescue nil }
           t2 = Thread.new { Clacky::BrowserManager.instance.stop rescue nil }
+          t3 = Thread.new { @mcp_registry&.shutdown rescue nil }
           t1.join(1.5)
           t2.join(1.5)
+          t3.join(1.5)
           server.shutdown rescue nil
         end
         trap("INT")  { shutdown_proc.call }
@@ -451,8 +456,17 @@ module Clacky
           elsif method == "POST" && path.match?(%r{^/api/mcp/[^/]+/probe$})
             name = path.sub("/api/mcp/", "").sub("/probe", "")
             api_mcp_probe(name, res)
+          elsif method == "GET" && path.match?(%r{^/api/mcp/[^/]+/tools$})
+            name = path.sub("/api/mcp/", "").sub("/tools", "")
+            api_mcp_tools(name, res)
+          elsif method == "POST" && path.match?(%r{^/api/mcp/[^/]+/call$})
+            name = path.sub("/api/mcp/", "").sub("/call", "")
+            api_mcp_call(name, req, res)
           elsif method == "POST" && path == "/api/mcp"
             api_mcp_create(req, res)
+          elsif method == "PATCH" && path.match?(%r{^/api/mcp/[^/]+/enabled$})
+            name = path.sub("/api/mcp/", "").sub("/enabled", "")
+            api_mcp_toggle(name, req, res)
           elsif method == "PUT" && path.match?(%r{^/api/mcp/[^/]+$})
             name = path.sub("/api/mcp/", "")
             api_mcp_update(name, req, res)
@@ -1593,31 +1607,30 @@ module Clacky
       # Lists configured MCP servers without spawning any subprocess. Honors
       # both ~/.clacky/mcp.json (global) and project-level overrides.
       def api_mcp_list(res)
-        registry = Clacky::Mcp::Registry.new(idle_timeout: 0)
-        global_path = File.join(Dir.home, ".clacky", "mcp.json")
+        data = mcp_load_raw_config
+        servers = (data["mcpServers"] || {}).map do |name, spec|
+          next nil unless spec.is_a?(Hash)
 
-        servers = registry.servers.map do |name, spec|
           type = (spec["type"] || (spec["url"] ? "http" : "stdio")).to_s
           {
-            name:        name,
+            name:        name.to_s,
             type:        type,
             description: spec["description"] || "",
             command:     spec["command"],
             args:        Array(spec["args"]),
             url:         spec["url"],
+            disabled:    spec["disabled"] == true,
             has_env:     spec["env"].is_a?(Hash) && !spec["env"].empty?,
             has_headers: spec["headers"].is_a?(Hash) && !spec["headers"].empty?,
           }
-        end
+        end.compact
 
         json_response(res, 200, {
-          configured:   registry.any?,
-          config_path:  global_path,
-          config_exists: File.exist?(global_path),
-          servers:      servers,
+          configured:    !servers.empty?,
+          config_path:   mcp_config_path,
+          config_exists: File.exist?(mcp_config_path),
+          servers:       servers,
         })
-      ensure
-        registry&.shutdown
       end
 
       # POST /api/mcp/:name/probe
@@ -1631,12 +1644,11 @@ module Clacky
           return
         end
 
-        skill = registry.virtual_skill_for(name)
-        tools = (skill&.tool_definitions || []).map do |defn|
+        tools = registry.tool_definitions(name).map do |defn|
           fn = defn[:function] || defn["function"] || {}
           {
-            name:        fn[:name] || fn["name"],
-            description: fn[:description] || fn["description"] || "",
+            name:         fn[:name] || fn["name"],
+            description:  fn[:description] || fn["description"] || "",
             input_schema: fn[:parameters] || fn["parameters"] || {},
           }
         end
@@ -1650,7 +1662,69 @@ module Clacky
         registry&.shutdown
       end
 
-      MCP_CONFIG_PATH = File.join(Dir.home, ".clacky", "mcp.json")
+      # GET /api/mcp/:name/tools
+      # Returns the live tool catalog for an MCP server, using the process-wide
+      # registry. The first call cold-starts the server; later calls hit cache.
+      # Subagents use this as a discovery endpoint, replacing the deleted
+      # mcp_call tool's hidden tool list.
+      def api_mcp_tools(name, res)
+        unless mcp_registry.configured?(name)
+          json_response(res, 404, { ok: false, error: "MCP server '#{name}' not found in mcp.json" })
+          return
+        end
+
+        tools = mcp_registry.tool_definitions(name).map do |defn|
+          fn = defn[:function] || defn["function"] || {}
+          {
+            name:         fn[:name] || fn["name"],
+            description:  fn[:description] || fn["description"] || "",
+            input_schema: fn[:parameters] || fn["parameters"] || {},
+          }
+        end
+
+        json_response(res, 200, { ok: true, name: name, tools: tools, tool_count: tools.length })
+      rescue Clacky::Mcp::Client::McpError, Clacky::Mcp::Client::TransportError => e
+        json_response(res, 502, { ok: false, error: e.message })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # POST /api/mcp/:name/call  body: { tool: "...", arguments: {...} }
+      # Forwards a tools/call to the configured MCP server and returns its raw
+      # result. Subagents call this from their shell tool via curl — there is
+      # no Ruby-side bridge tool anymore.
+      def api_mcp_call(name, req, res)
+        unless mcp_registry.configured?(name)
+          json_response(res, 404, { ok: false, error: "MCP server '#{name}' not found in mcp.json" })
+          return
+        end
+
+        body = parse_json_body(req) || {}
+        tool = body["tool"] || body[:tool]
+        arguments = body["arguments"] || body[:arguments] || {}
+
+        if tool.nil? || tool.to_s.strip.empty?
+          json_response(res, 400, { ok: false, error: "missing required field: tool" })
+          return
+        end
+
+        result = mcp_registry.call_tool(name, tool, arguments)
+        json_response(res, 200, { ok: true, result: result })
+      rescue Clacky::Mcp::Client::McpError, Clacky::Mcp::Client::TransportError => e
+        json_response(res, 502, { ok: false, error: e.message })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      private def mcp_config_path
+        File.join(Dir.home, ".clacky", "mcp.json")
+      end
+
+      private def mcp_registry
+        @mcp_registry_mutex.synchronize do
+          @mcp_registry ||= Clacky::Mcp::Registry.new(working_dir: nil)
+        end
+      end
 
       private def mcp_localhost_only(req, res)
         ip = req.peeraddr.last rescue nil
@@ -1661,9 +1735,9 @@ module Clacky
       end
 
       private def mcp_load_raw_config
-        return { "mcpServers" => {} } unless File.exist?(MCP_CONFIG_PATH)
+        return { "mcpServers" => {} } unless File.exist?(mcp_config_path)
 
-        data = JSON.parse(File.read(MCP_CONFIG_PATH))
+        data = JSON.parse(File.read(mcp_config_path))
         data["mcpServers"] ||= data.delete("servers") || {}
         data
       rescue JSON::ParserError
@@ -1671,8 +1745,8 @@ module Clacky
       end
 
       private def mcp_write_raw_config(data)
-        FileUtils.mkdir_p(File.dirname(MCP_CONFIG_PATH))
-        File.write(MCP_CONFIG_PATH, JSON.pretty_generate(data) + "\n")
+        FileUtils.mkdir_p(File.dirname(mcp_config_path))
+        File.write(mcp_config_path, JSON.pretty_generate(data) + "\n")
       end
 
       private def mcp_validate_spec(body)
@@ -1722,7 +1796,7 @@ module Clacky
 
         data["mcpServers"][name] = spec
         mcp_write_raw_config(data)
-        json_response(res, 200, { ok: true, name: name, config_path: MCP_CONFIG_PATH })
+        json_response(res, 200, { ok: true, name: name, config_path: mcp_config_path })
       end
 
       # PUT /api/mcp/:name  { command, args[], env{}, cwd?, description? }
@@ -1761,6 +1835,36 @@ module Clacky
         data["mcpServers"].delete(name)
         mcp_write_raw_config(data)
         json_response(res, 200, { ok: true, name: name })
+      end
+
+      # PATCH /api/mcp/:name/enabled  body: { enabled: true|false }
+      def api_mcp_toggle(name, req, res)
+        return unless mcp_localhost_only(req, res)
+
+        body = parse_json_body(req) || {}
+        enabled = body["enabled"]
+        if enabled.nil? || ![true, false].include?(enabled)
+          json_response(res, 400, { ok: false, error: "enabled (boolean) is required" })
+          return
+        end
+
+        data = mcp_load_raw_config
+        spec = data["mcpServers"][name]
+        unless spec.is_a?(Hash)
+          json_response(res, 404, { ok: false, error: "MCP server '#{name}' not found" })
+          return
+        end
+
+        if enabled
+          spec.delete("disabled")
+        else
+          spec["disabled"] = true
+        end
+        mcp_write_raw_config(data)
+
+        @mcp_registry_mutex.synchronize { @mcp_registry&.reload }
+
+        json_response(res, 200, { ok: true, name: name, disabled: spec["disabled"] == true })
       end
 
       # POST /api/channels/:platform/send
