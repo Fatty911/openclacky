@@ -325,6 +325,12 @@ module Clacky
           project_root: cwd || Dir.pwd
         )
 
+        # WSL interop fix: Windows .exe processes inherit the PTY's stdin fd
+        # and attempt to use it as a Windows Console, causing them to hang
+        # indefinitely. Redirect stdin from /dev/null for any .exe invocation
+        # that doesn't already have an explicit stdin redirect.
+        safe_command = redirect_exe_stdin(safe_command)
+
         # Background / dedicated path — never reuse the persistent shell,
         # because these commands stay running and would occupy the slot.
         if background
@@ -768,7 +774,7 @@ module Clacky
 
         spawn_env = {
           "TERM" => "xterm-256color",
-          "PS1"  => "",
+          "PS1"  => " ",
           # Prevent our sub-shell from polluting the user's ~/.zsh_history
           # (or ~/.bash_history). We fork a full interactive login shell to
           # get rbenv/nvm/brew-shellenv/mise loaded, but every command we
@@ -1357,6 +1363,16 @@ module Clacky
         lines = text.split(/\r?\n/).reject { |l| l.strip.empty? }
         return "" if lines.empty?
         lines.last(DISPLAY_TAIL_LINES).join("\n")
+      end
+
+      # WSL interop fix: Windows .exe processes inherit the PTY stdin fd
+      # and try to use it as a Windows Console, which hangs indefinitely.
+      # Detect .exe invocations and redirect stdin from /dev/null unless
+      # the command already has an explicit stdin redirect.
+      private def redirect_exe_stdin(command)
+        return command unless command =~ /\.exe\b/i
+        return command if command =~ /<\s*[^\s|&;]/
+        "#{command} </dev/null"
       end
     end
   end
