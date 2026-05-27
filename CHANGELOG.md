@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-05-27
+
+### Added
+- Qwen 3.7 model support
+- WSL network doctor PowerShell script
+- Limit on glob/grep file walker to prevent excessive traversal
+
+### Fixed
+- Terminal single-line mode issue
+- Terminal execution hang
+- apt try logic
+
 ## [1.2.2] - 2026-05-25
 
 ### More
