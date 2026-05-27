@@ -11,8 +11,8 @@
 #     -BrandName    Display name shown in prompts    (default: OpenClacky)
 #     -CommandName  CLI command name after install   (default: openclacky)
 #
-# WSL2 is preferred. If virtualisation is unavailable (e.g. running inside a VM),
-# the script automatically falls back to WSL1.
+# WSL1 is preferred (shares Windows network stack — no mirrored networking needed).
+# If WSL1 import fails, the script falls back to WSL2 with mirrored networking.
 # If WSL is not installed at all, the script enables it and asks you to reboot.
 # After rebooting, run the same command again to complete installation.
 #
@@ -501,32 +501,59 @@ if ($installPhase -eq "wsl-pending" -and $wslCode -eq 1) {
 # wslCode != 1 (0, -1, -444, 50, etc.): WSL is functional, continue.
 Remove-InstallReg -Name "InstallPhase"
 
-# Step 2: Install Ubuntu, preferring WSL2 when the real rootfs imports cleanly.
+# Step 2: Install Ubuntu, preferring WSL1 (shares Windows network — no mirrored needed).
+# If WSL1 import fails, fall back to WSL2.
+# If the distro already exists, keep whatever version was previously installed.
 if (Test-UbuntuInstalled) {
     Write-Info "Ubuntu (WSL) already installed — skipping import."
     $wslVersion = Get-InstallReg -Name "WslVersion" -Default 2
 } else {
     $tarPath = Get-UbuntuRootfs
-    if (Test-VirtualisationSupported -TarPath $tarPath) {
-        wsl.exe --set-default-version 2 >$null 2>$null
-        Install-UbuntuRootfs -WslVersion 2 -TarPath $tarPath
-        $wslVersion = 2
-    } else {
-        if ($wslFeaturesEnabled -ne "1") {
-            # WSL components were never fully prepared — run Enable-WslFeatures and reboot.
-            Write-Warn "WSL2 is not available and WSL components have not been fully set up."
-            Enable-WslFeatures
-            # Always exits (prompts reboot)
-        }
-        Write-Info "[main] WSL2 unavailable, falling back to WSL1..."
-        Install-UbuntuRootfs -WslVersion 1 -TarPath $tarPath
+
+    # Try WSL1 first
+    Write-Info "Attempting WSL1 import..."
+    $wsl1Ok = $false
+    try {
+        New-Item -ItemType Directory -Force -Path $UBUNTU_WSL_DIR | Out-Null
+        wsl.exe --import Ubuntu $UBUNTU_WSL_DIR $tarPath --version 1 >$null 2>$null
+        $wsl1Ok = ($LASTEXITCODE -eq 0)
+    } catch {
+        $wsl1Ok = $false
+    }
+
+    if ($wsl1Ok) {
+        Write-Success "Ubuntu (WSL1) imported successfully."
         $wslVersion = 1
+    } else {
+        # Clean up failed WSL1 attempt
+        wsl.exe --unregister Ubuntu 2>$null | Out-Null
+        Remove-Item -Force -Recurse -ErrorAction SilentlyContinue $UBUNTU_WSL_DIR
+
+        Write-Info "WSL1 import failed, trying WSL2..."
+        if (Test-VirtualisationSupported -TarPath $tarPath) {
+            wsl.exe --set-default-version 2 >$null 2>$null
+            Install-UbuntuRootfs -WslVersion 2 -TarPath $tarPath
+            $wslVersion = 2
+        } else {
+            if ($wslFeaturesEnabled -ne "1") {
+                Write-Warn "Neither WSL1 nor WSL2 is available. Enabling WSL components..."
+                Enable-WslFeatures
+                # Always exits (prompts reboot)
+            }
+            Write-Fail "Failed to import Ubuntu into both WSL1 and WSL2."
+            Write-Fail "Please ensure Windows Subsystem for Linux is enabled and try again."
+            exit 1
+        }
     }
 }
 
-if ($wslVersion -eq 2) { Set-Wsl2MirroredNetworking }
-
 Write-Success "WSL is ready."
 Run-InstallInWsl
+
+# For WSL2, configure mirrored networking AFTER install.sh succeeds (NAT is more
+# reliable for outbound traffic during installation). The shutdown here is safe
+# because installation is already complete.
+if ($wslVersion -eq 2) { Set-Wsl2MirroredNetworking }
+
 Set-InstallReg -Name "WslVersion" -Value $wslVersion
 Show-PostInstall -WslVersion $wslVersion
