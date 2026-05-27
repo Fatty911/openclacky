@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-05-27
+
+### Added
+- Browser/agent snapshot now supports `with_page` for paginated results
+- Prefer WSL1 over WSL2 for better compatibility
+
+### Fixed
+- Feishu post message type and WeCom mixed message type not handled properly
+- WeChat stale QR code session not detected when reconfiguring channel
+- Channel adapter using stale reference after reconfiguration
+- Benchmark terminated early by 10-second outer request timeout
+- Model card action buttons overflowing on narrow viewports
+- Save button staying disabled when reopening model edit modal
+- WSL pipe breaking when `redirect_exe_stdin` appends `</dev/null`
+- MCP registry not hot-reloading after writing config
+- MCP server breaking from bashrc PS1 customization
+- Terminal realtime output not streaming correctly
+- PowerShell UTF-8 encoding issues
+- WSL bashrc not loading in non-interactive shells
+- Qwen 3.7 Max incorrectly treated as vision-capable model
+
+### More
+- Log service start failure reason for easier diagnostics
+
 ## [1.2.3] - 2026-05-27
 
 ### Added
