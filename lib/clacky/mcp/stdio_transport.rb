@@ -3,8 +3,10 @@
 require "json"
 require "open3"
 require "monitor"
+require "shellwords"
 
 require_relative "transport"
+require_relative "../utils/login_shell"
 
 module Clacky
   module Mcp
@@ -29,7 +31,10 @@ module Clacky
         opts = { unsetenv_others: false }
         opts[:chdir] = @cwd if @cwd && File.directory?(@cwd)
 
-        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(full_env, @command, *@args, opts)
+        inner = ([@command] + @args).map { |a| Shellwords.shellescape(a) }.join(" ")
+        wrapped = Clacky::Utils::LoginShell.login_shell_command(inner)
+
+        @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(full_env, *wrapped, opts)
         @stdin.sync = true
 
         Thread.new do
