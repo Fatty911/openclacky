@@ -345,6 +345,10 @@ module Clacky
         # that doesn't already have an explicit stdin redirect.
         safe_command = redirect_exe_stdin(safe_command)
 
+        # PowerShell 5 on Chinese Windows emits CP936/GBK by default; force
+        # UTF-8 so our PTY (which decodes as UTF-8) doesn't see ??? bytes.
+        safe_command = force_powershell_utf8(safe_command)
+
         # Background / dedicated path — never reuse the persistent shell,
         # because these commands stay running and would occupy the slot.
         if background
@@ -1404,6 +1408,46 @@ module Clacky
         return command unless command =~ /\.exe\b/i
         return command if command =~ /<\s*[^\s|&;]/
         "#{command} </dev/null"
+      end
+
+      # PowerShell 5 on Chinese Windows defaults [Console]::OutputEncoding
+      # to CP936/GBK; our PTY decodes as UTF-8 so non-ASCII output becomes
+      # `???`. Inject UTF-8 setup into the user's PowerShell command so the
+      # shell emits UTF-8 bytes regardless of host locale.
+      POWERSHELL_PREAMBLE =
+        "[Console]::OutputEncoding=[Text.Encoding]::UTF8;" \
+        "$OutputEncoding=[Text.Encoding]::UTF8;"
+
+      # Only rewrites simple `powershell[.exe]` / `pwsh[.exe]` invocations.
+      # Skips -File / -EncodedCommand / commands already handling encoding /
+      # pipelines (anything risky to splice).
+      private def force_powershell_utf8(command)
+        cmd = command.to_s
+        return command unless cmd =~ /\A\s*(?:powershell(?:\.exe)?|pwsh(?:\.exe)?)\b/i
+        return command if cmd =~ /OutputEncoding/i
+        return command if cmd =~ /\s-(?:File|EncodedCommand|enc|f)\b/i
+
+        # `-Command "..."` form: pipeline / chain characters inside the
+        # quoted body are PowerShell-internal, not shell-level, so we splice
+        # safely into the quoted string.
+        if (m = cmd.match(/\A(\s*(?:powershell(?:\.exe)?|pwsh(?:\.exe)?)\s+(?:[^"'\s]+\s+)*?-(?:Command|c)\s+)(["'])(.*)\2(\s*(?:<\s*\S+\s*)?)\z/i))
+          head, quote, body, tail = m[1], m[2], m[3], m[4].to_s
+          return "#{head}#{quote}#{POWERSHELL_PREAMBLE}#{body}#{quote}#{tail}"
+        end
+
+        # Outside the quoted-Command form, refuse to splice if there's any
+        # shell-level pipe / chain — too risky to get the boundaries right.
+        return command if cmd =~ /[|&;]/
+
+        if (m = cmd.match(/\A(\s*(?:powershell(?:\.exe)?|pwsh(?:\.exe)?))(.*)\z/i))
+          exe, rest = m[1], m[2].to_s.strip
+          return command if rest.start_with?("-") && rest !~ /\A-(?:Command|c)\b/i
+          rest = rest.sub(/\A-(?:Command|c)\b\s*/i, "")
+          inner = rest.empty? ? POWERSHELL_PREAMBLE.chomp(";") : "#{POWERSHELL_PREAMBLE}#{rest}"
+          return %Q{#{exe} -Command "#{inner}"}
+        end
+
+        command
       end
     end
   end
