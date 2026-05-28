@@ -237,33 +237,6 @@ module Clacky
         "website_url" => "https://console.anthropic.com/settings/keys"
       }.freeze,
 
-      "clackyai-sea" => {
-        "name" => "ClackyAI(Sea)",
-        "base_url" => "https://api.clacky.ai",
-        "api" => "bedrock",
-        "default_model" => "abs-claude-sonnet-4-5",
-        "models" => [
-          "abs-claude-opus-4-6",
-          "abs-claude-sonnet-4-6",
-          "abs-claude-sonnet-4-5",
-          "abs-claude-haiku-4-5"
-        ],
-        # Claude family — all vision-capable.
-        "capabilities" => { "vision" => true }.freeze,
-        # Per-primary lite pairing — see openclacky preset for rationale.
-        "lite_models" => {
-          "abs-claude-opus-4-6"   => "abs-claude-haiku-4-5",
-          "abs-claude-sonnet-4-6" => "abs-claude-haiku-4-5",
-          "abs-claude-sonnet-4-5" => "abs-claude-haiku-4-5"
-        },
-        # Fallback chain: if a model is unavailable, try the next one in order.
-        # Keys are primary model names; values are the fallback model to use instead.
-        "fallback_models" => {
-          "abs-claude-sonnet-4-6" => "abs-claude-sonnet-4-5"
-        },
-        "website_url" => "https://clacky.ai"
-      }.freeze,
-
       "mimo" => {
         "name" => "MiMo (Xiaomi)",
         "base_url" => "https://api.xiaomimimo.com/v1",
