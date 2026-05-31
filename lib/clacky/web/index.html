@@ -313,6 +313,8 @@
     <!-- Chat panel -->
     <div id="chat-panel" style="display:none">
 
+      <!-- Chat column (messages + info bar + input) -->
+      <div id="chat-main">
       <div id="messages"></div>
       <!-- New message notification banner -->
       <div id="new-message-banner" class="new-message-banner" style="display:none">
@@ -398,6 +400,35 @@
           <button id="btn-interrupt" style="display:none" title="Stop"></button>
         </div>
       </div>
+      </div><!-- /#chat-main -->
+
+      <!-- ── WORKSPACE PANEL (right) ──────────────────────────────────── -->
+      <aside id="workspace-panel" class="collapsed">
+        <div id="workspace-header">
+          <span id="workspace-title" data-i18n="workspace.title">Workspace</span>
+          <div class="workspace-header-actions">
+            <button id="btn-workspace-refresh" class="workspace-icon-btn" data-i18n-title="workspace.refresh" title="Refresh">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+            </button>
+            <button id="btn-workspace-close" class="workspace-icon-btn" data-i18n-title="workspace.collapse" title="Collapse">
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="workspace-tree" role="tree"></div>
+      </aside>
+
+      <!-- Collapsed-state opener tab -->
+      <button id="btn-workspace-open" data-i18n-title="workspace.expand" title="Open workspace" style="display:none">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+      </button>
     </div>
 
     <!-- ── CREATOR PANEL ─────────────────────────────────────────────── -->
@@ -1251,6 +1282,7 @@
 <script src="/ws.js"></script>
 <script src="/ws-dispatcher.js"></script>
 <script src="/sessions.js"></script>
+<script src="/workspace.js"></script>
 <script src="/datepicker.js"></script>
 <script src="/tasks.js"></script>
 <script src="/skills.js"></script>

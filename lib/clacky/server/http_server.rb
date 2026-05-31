@@ -481,6 +481,9 @@ module Clacky
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/skills$})
             session_id = path.sub("/api/sessions/", "").sub("/skills", "")
             api_session_skills(session_id, res)
+          elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/files$})
+            session_id = path.sub("/api/sessions/", "").sub("/files", "")
+            api_session_files(session_id, req, res)
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/export$})
             session_id = path.sub("/api/sessions/", "").sub("/export", "")
             api_export_session(session_id, res)
@@ -2448,7 +2451,56 @@ module Clacky
         json_response(res, 200, { skills: skill_data })
       end
 
-      # PATCH /api/skills/:name/toggle — enable or disable a skill
+      # GET /api/sessions/:id/files?path=<relative dir>
+      # Lists one directory level inside the session's working_dir (lazy, per-layer).
+      # Path traversal outside working_dir is rejected. Noisy dirs are hidden.
+      IGNORED_FILE_ENTRIES = %w[.git .svn .hg node_modules .DS_Store .bundle vendor/bundle tmp .sass-cache].freeze
+
+      def api_session_files(session_id, req, res)
+        unless @registry.ensure(session_id)
+          return json_response(res, 404, { error: "Session not found" })
+        end
+        session = @registry.get(session_id)
+        agent   = session && session[:agent]
+        return json_response(res, 404, { error: "Session not found" }) unless agent
+
+        root = File.expand_path(agent.working_dir.to_s)
+        return json_response(res, 404, { error: "Working directory not found" }) unless Dir.exist?(root)
+
+        rel = URI.decode_www_form(req.query_string.to_s).to_h["path"].to_s
+        rel = rel.sub(%r{\A/+}, "").strip
+        target = File.expand_path(File.join(root, rel))
+
+        # Reject traversal outside the working directory.
+        unless target == root || target.start_with?("#{root}/")
+          return json_response(res, 403, { error: "Path outside working directory" })
+        end
+        return json_response(res, 404, { error: "Directory not found" }) unless Dir.exist?(target)
+
+        entries = Dir.children(target).reject { |name| IGNORED_FILE_ENTRIES.include?(name) }
+
+        items = entries.filter_map do |name|
+          full = File.join(target, name)
+          is_dir = File.directory?(full)
+          # Skip symlinks pointing outside the root, and anything unreadable.
+          next unless File.exist?(full)
+          {
+            name:  name,
+            path:  rel.empty? ? name : "#{rel}/#{name}",
+            type:  is_dir ? "dir" : "file",
+            size:  is_dir ? nil : (File.size(full) rescue nil)
+          }
+        rescue StandardError
+          nil
+        end
+
+        # Directories first, then files; both case-insensitive alphabetical.
+        items.sort_by! { |it| [it[:type] == "dir" ? 0 : 1, it[:name].downcase] }
+
+        json_response(res, 200, { root: root, path: rel, entries: items })
+      rescue StandardError => e
+        json_response(res, 500, { error: e.message })
+      end
       # Body: { enabled: true/false }
       def api_toggle_skill(name, req, res)
         body    = parse_json_body(req)
@@ -3750,11 +3802,9 @@ module Clacky
 
         # Expand ~ to home directory
         expanded_dir = File.expand_path(new_dir)
-        
-        # Validate directory exists
-        unless Dir.exist?(expanded_dir)
-          return json_response(res, 400, { error: "Directory does not exist: #{expanded_dir}" })
-        end
+
+        # Auto-create the directory if it doesn't exist yet.
+        FileUtils.mkdir_p(expanded_dir)
 
         agent = nil
         @registry.with_session(session_id) { |s| agent = s[:agent] }
