@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.7] - 2026-06-01
+
+### Added
+- Session workspace file explorer — browse and download files in Web UI sidebar
+- Channel manager: new, clear, and skill commands
+- Top-up link in Web UI under billing section
+- Sub-model switching within active sessions
+- Claude 4.8 model support
+- Connection test improvements for custom Claude models
+
+### Fixed
+- Nil error in compress top match parsing
+- Empty 0-token responses causing agent stalls (close #218)
+- Brand config built-in skills loaded without MANIFEST.enc.json (C-5627)
+- Terminal .exe stdin isolation at command-wrap on WSL (close #221)
+- Overly verbose builtin skills installed message during onboarding
+
+### More
+- Add Docker installation section to README
+
 ## [1.2.6] - 2026-05-29
 
 ### Added
