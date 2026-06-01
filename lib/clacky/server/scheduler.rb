@@ -223,11 +223,8 @@ module Clacky
         prompt    = read_task(task_name)
         name      = "⏰ #{schedule["name"]} #{Time.now.strftime("%H:%M")}"
 
-        working_dir = File.expand_path("~/clacky_workspace")
-        FileUtils.mkdir_p(working_dir)
-
         # Scheduled tasks run unattended — use auto_approve so request_user_feedback doesn't block.
-        session_id = @session_builder.call(name: name, working_dir: working_dir, permission_mode: :auto_approve, source: :cron)
+        session_id = @session_builder.call(name: name, permission_mode: :auto_approve, source: :cron)
 
         Clacky::Logger.info("scheduler_task_fired", task: task_name, session: session_id)
 
