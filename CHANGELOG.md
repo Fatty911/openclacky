@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WSL network connectivity pre-check before installation
 - MiniMax M3 provider with vision support and pricing
 - One-click exchange rate update in settings
-- Rich TUI controller for terminal interaction
+- Rich TUI controller (experimental, enable with `--ui rich`) for terminal interaction
 
 ### Improved
 - WebUI working directory selector UX
