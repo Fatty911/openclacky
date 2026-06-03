@@ -678,8 +678,13 @@ module Clacky
       def create_default_session
         return unless @agent_config.models_configured?
 
-        # Restore up to 5 sessions per source type from disk into the registry.
-        @registry.restore_from_disk(n: 5)
+        # Restore up to 2 sessions per source type from disk. Earlier this was
+        # 5/source (≤20 sessions), which exceeded max_idle_agents=10 and caused
+        # the first user message after a restart to spend several seconds in
+        # evict_excess_idle! serializing 10+ sessions back to disk. 2/source
+        # keeps the most-recent items hot for fast switch without blowing the
+        # idle budget.
+        @registry.restore_from_disk(n: 2)
 
         # If nothing was restored (no persisted sessions), create a fresh default.
         unless @registry.list(limit: 1).any?
@@ -4622,15 +4627,27 @@ module Clacky
           return
         end
 
-        @registry.evict_excess_idle!
-
         idle_timer = nil
         @registry.with_session(session_id) { |s| idle_timer = s[:idle_timer] }
 
         # Cancel any pending idle compression before starting a new task
         idle_timer&.cancel
 
+        # Mark running BEFORE evict_excess_idle! — otherwise this session
+        # (still :idle here) can be evicted from the registry along with
+        # other idle agents, breaking subsequent status updates and any
+        # follow-up handle_user_message (which would early-return on
+        # @registry.exist? == false).
         @registry.update(session_id, status: :running)
+
+        # evict_excess_idle! serializes + writes 1 file per evicted session
+        # (can be 5+ on first message after a restart when restore_from_disk
+        # warmed up many idles). Running it inline added multi-second latency
+        # to the first user message. Run it off the request path; eviction
+        # is a memory-pressure relief, not a correctness requirement for
+        # starting this task.
+        Thread.new { @registry.evict_excess_idle! }
+
         broadcast_session_update(session_id)
 
         thread = Thread.new do

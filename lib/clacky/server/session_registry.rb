@@ -99,16 +99,15 @@ module Clacky
         @sessions.key?(session_id)
       end
 
-      # Restore all sessions from disk (up to n per source type) into the registry.
-      # Used at startup. Already-registered sessions are skipped.
-      def restore_from_disk(n: 5)
+      # Restore at most n sessions per source as a hot cache at startup.
+      # Everything else is loaded on demand via ensure(id).
+      def restore_from_disk(n: 2)
         return unless @session_manager && @session_restorer
 
         all = @session_manager.all_sessions
           .sort_by { |s| s[:created_at] || "" }
           .reverse
 
-        # Take up to n per source type
         counts = Hash.new(0)
         all.each do |session_data|
           src = (session_data[:source] || "manual").to_s
@@ -375,8 +374,6 @@ module Clacky
         count_by_status(:running) >= max_running_agents
       end
 
-      # Evict oldest idle agents beyond MAX_IDLE_AGENTS.
-      # Persists session data to disk before releasing the agent from memory.
       def evict_excess_idle!
         to_evict = []
 
