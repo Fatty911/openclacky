@@ -32,6 +32,11 @@ Do NOT try to fall back to `terminal` + a hand-written `curl https://api.openai.
 
 ## Step 2 — Generate the image
 
+### ⚠️  Important: generation speed & concurrency
+
+- **Image generation can be slow — up to 2 minutes per image depending on the model.** Before calling the API, warn the user that it may take a minute or two. The curl request blocks until the image is ready; do NOT run it in the background.
+- **One at a time only.** Never generate multiple images concurrently (e.g. by running several `curl` commands simultaneously or in a script loop). Each call consumes significant server-side resources, and parallel requests will almost certainly cause timeouts. If the user wants several images, generate them **sequentially**, one after another.
+
 ```bash
 curl -s -X POST http://${CLACKY_SERVER_HOST}:${CLACKY_SERVER_PORT}/api/media/image \
   -H "Content-Type: application/json" \
