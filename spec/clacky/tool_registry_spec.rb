@@ -111,6 +111,24 @@ RSpec.describe Clacky::ToolRegistry do
     it "returns nil for unknown name with no close match" do
       expect(registry.resolve("xyz_abc")).to be_nil
     end
+
+    # Harmony / control-token contamination from gpt-oss style models
+    it "strips Harmony channel suffix like '<|channel|>commentary'" do
+      expect(registry.resolve("file_reader<|channel|>commentary")).to eq("file_reader")
+    end
+
+    it "strips Harmony tokens combined with case mismatch" do
+      expect(registry.resolve("Read<|channel|>commentary")).to eq("file_reader")
+    end
+
+    it "strips trailing whitespace and stray punctuation" do
+      expect(registry.resolve("terminal\n")).to eq("terminal")
+      expect(registry.resolve("terminal, ")).to eq("terminal")
+    end
+
+    it "returns nil safely when name is nil" do
+      expect(registry.resolve(nil)).to be_nil
+    end
   end
 
   describe "#tool_names" do

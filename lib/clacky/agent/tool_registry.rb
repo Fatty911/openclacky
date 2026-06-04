@@ -88,6 +88,9 @@ module Clacky
     #   3. Alias lookup (e.g. "read_file" → "file_reader")
     # Returns the canonical tool name, or nil if nothing matched.
     def resolve(name)
+      return nil if name.nil?
+
+      name = sanitize_name(name)
       return name if @tools.key?(name)
 
       downcased = name.downcase
@@ -138,6 +141,13 @@ module Clacky
 
     def by_category(category)
       @tools.values.select { |tool| tool.category == category }
+    end
+
+    private def sanitize_name(name)
+      cleaned = name.to_s
+      cleaned = cleaned.split(/<\|/, 2).first.to_s
+      cleaned = cleaned.split(/[\s,;|]/, 2).first.to_s
+      cleaned.strip
     end
   end
 end
