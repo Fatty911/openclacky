@@ -51,6 +51,27 @@ module Clacky
       all_sessions.find { |s| s[:session_id].to_s.start_with?(session_id.to_s) }
     end
 
+    # Fork a session: create a copy with new id, "(copy)" name suffix, and reset stats.
+    # Returns the forked session data hash, or nil if the original is not found.
+    def fork(session_id)
+      original = load(session_id)
+      return nil unless original
+
+      forked = original.dup
+      forked[:session_id]  = self.class.generate_id
+      forked[:created_at]  = Time.now.iso8601
+      forked[:updated_at]  = Time.now.iso8601
+      forked[:pinned]      = false
+      forked[:name]        = "#{original[:name] || "Unnamed session"} (copy)"
+      forked[:stats] = (original[:stats] || {}).merge(
+        total_tasks: 0, total_iterations: 0, total_cost_usd: 0.0,
+        last_status: nil, last_error: nil
+      )
+
+      save(forked)
+      forked
+    end
+
     # Soft-delete: move session JSON + chunks to the session trash directory.
     # Returns true if found and moved, false if not found.
     def delete(session_id)

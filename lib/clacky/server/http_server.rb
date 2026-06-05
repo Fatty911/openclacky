@@ -552,6 +552,9 @@ module Clacky
           elsif method == "PATCH" && path.match?(%r{^/api/sessions/[^/]+/working_dir$})
             session_id = path.sub("/api/sessions/", "").sub("/working_dir", "")
             api_change_session_working_dir(session_id, req, res)
+          elsif method == "POST" && path.match?(%r{^/api/sessions/[^/]+/fork$})
+            session_id = path.sub("/api/sessions/", "").sub("/fork", "")
+            api_fork_session(session_id, req, res)
           elsif method == "DELETE" && path.start_with?("/api/sessions/")
             session_id = path.sub("/api/sessions/", "")
             api_delete_session(session_id, res)
@@ -4199,6 +4202,15 @@ module Clacky
         json_response(res, 200, { ok: true, working_dir: expanded_dir })
       rescue => e
         json_response(res, 500, { error: e.message })
+      end
+
+      def api_fork_session(session_id, req, res)
+        fork_data = @session_manager.fork(session_id)
+        return json_response(res, 404, { error: "Session not found" }) unless fork_data
+
+        fork_id = fork_data[:session_id]
+        broadcast_session_update(fork_id)
+        json_response(res, 201, { session: @registry.snapshot(fork_id) })
       end
 
       def api_delete_session(session_id, res)

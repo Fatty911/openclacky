@@ -50,6 +50,7 @@ module Clacky
     option :verbose, type: :boolean, aliases: "-v", default: false, desc: "Show detailed output"
     option :path, type: :string, desc: "Project directory path (defaults to current directory)"
     option :continue, type: :boolean, aliases: "-c", desc: "Continue most recent session"
+    option :fork, type: :string, desc: "Fork a session by number or session ID prefix (creates a copy)"
     option :list, type: :boolean, aliases: "-l", desc: "List recent sessions"
     option :attach, type: :string, aliases: "-a", desc: "Attach to session by number or keyword"
     option :json, type: :boolean, default: false, desc: "Output NDJSON to stdout (for scripting/piping)"
@@ -139,6 +140,9 @@ module Clacky
         is_session_load = !agent.nil?
       elsif options[:attach]
         agent = load_session_by_number(client_factory.call, agent_config, session_manager, working_dir, options[:attach], profile: agent_profile)
+        is_session_load = !agent.nil?
+      elsif options[:fork]
+        agent = fork_session(client_factory.call, agent_config, session_manager, working_dir, options[:fork], profile: agent_profile)
         is_session_load = !agent.nil?
       end
 
@@ -547,6 +551,56 @@ module Clacky
 
         # Don't print message here - will be shown by UI after banner
         Clacky::Agent.from_session(client, agent_config, session_data, profile: resolved_profile)
+      end
+
+      def fork_session(client, agent_config, session_manager, working_dir, identifier, profile:)
+        # Get a larger list to search through (for ID prefix matching)
+        sessions = session_manager.all_sessions(current_dir: working_dir, limit: 100)
+
+        if sessions.empty?
+          say "No sessions found.", :yellow
+          return nil
+        end
+
+        session_data = nil
+
+        # Same resolution logic as load_session_by_number
+        if identifier.match?(/^\d+$/) && identifier.to_i <= 99
+          index = identifier.to_i - 1
+          if index < 0 || index >= sessions.size
+            say "Invalid session number. Use -l to list available sessions.", :red
+            exit 1
+          end
+          session_data = sessions[index]
+        else
+          matching_sessions = sessions.select { |s| s[:session_id].start_with?(identifier) }
+          if matching_sessions.empty?
+            say "No session found matching ID prefix: #{identifier}", :red
+            say "Use -l to list available sessions.", :yellow
+            exit 1
+          elsif matching_sessions.size > 1
+            say "Multiple sessions found matching '#{identifier}':", :yellow
+            matching_sessions.each_with_index do |session, idx|
+              created_at = Time.parse(session[:created_at]).strftime("%Y-%m-%d %H:%M")
+              s_id = session[:session_id][0..7]
+              name = session[:name].to_s.empty? ? "Unnamed session" : session[:name]
+              say "  #{idx + 1}. [#{s_id}] #{created_at} - #{name}", :cyan
+            end
+            say "\nPlease use a more specific prefix.", :yellow
+            exit 1
+          else
+            session_data = matching_sessions.first
+          end
+        end
+
+        fork_data = session_manager.fork(session_data[:session_id])
+        return nil unless fork_data
+
+        # Fall back to CLI --agent flag for sessions that predate agent_profile
+        restored_profile = fork_data[:agent_profile].to_s
+        resolved_profile = restored_profile.empty? ? profile : restored_profile
+
+        Clacky::Agent.from_session(client, agent_config, fork_data, profile: resolved_profile)
       end
 
       # Handle agent error/interrupt with cleanup
