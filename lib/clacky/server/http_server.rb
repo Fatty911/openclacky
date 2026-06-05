@@ -613,6 +613,7 @@ module Clacky
         limit   = [query["limit"].to_i.then { |n| n > 0 ? n : 20 }, 50].min
         before  = query["before"].to_s.strip.then  { |v| v.empty? ? nil : v }
         q       = query["q"].to_s.strip.then       { |v| v.empty? ? nil : v }
+        q_scope = query["q_scope"].to_s.strip.then { |v| %w[name content].include?(v) ? v : "name" }
         date    = query["date"].to_s.strip.then    { |v| v.empty? ? nil : v }
         type    = query["type"].to_s.strip.then    { |v| v.empty? ? nil : v }
         # Backward-compat: ?source=<x> and ?profile=coding → type
@@ -623,7 +624,7 @@ module Clacky
         # `registry.list` always returns ALL matching pinned rows first (on the
         # first page; `before` == nil), followed by non-pinned rows up to `limit+1`.
         # So has_more is determined by whether the non-pinned section overflowed.
-        sessions = @registry.list(limit: limit + 1, before: before, q: q, date: date, type: type)
+        sessions = @registry.list(limit: limit + 1, before: before, q: q, q_scope: q_scope, date: date, type: type)
 
         # Split pinned vs non-pinned to apply has_more only to the non-pinned tail.
         pinned_part, non_pinned_part = sessions.partition { |s| s[:pinned] }

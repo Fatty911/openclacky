@@ -3,6 +3,7 @@
 require "json"
 require "fileutils"
 require "securerandom"
+require "open3"
 
 module Clacky
   class SessionManager
@@ -177,6 +178,104 @@ module Clacky
       end
 
       limit ? sessions.first(limit) : sessions
+    end
+
+    # Full-text grep over session JSON + chunk MD files.
+    # Case-sensitive: BSD grep -i is ~30x slower; Chinese has no case.
+    # Returns Hash<short_id String => snippet String> (snippet around the first match).
+    def search_content(query, timeout: 5)
+      q = query.to_s
+      return {} if q.strip.length < 2
+
+      files = Dir.glob(File.join(@sessions_dir, "*.json")) +
+              Dir.glob(File.join(@sessions_dir, "*-chunk-*.md"))
+      return {} if files.empty?
+
+      result = {}
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+      each_grep_batch(files) do |batch|
+        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        break if remaining <= 0
+        out = run_with_timeout({ "LC_ALL" => "C" },
+                               "grep", "-H", "-F", "-m", "1", "--",
+                               q, *batch,
+                               timeout: remaining)
+        next unless out
+        out.each_line do |line|
+          path, _, rest = line.chomp.partition(":")
+          next if path.empty? || rest.empty?
+          sid = extract_short_id(File.basename(path))
+          next unless sid
+          next if result.key?(sid)
+          result[sid] = build_snippet(rest, q)
+        end
+      end
+      result
+    end
+
+    # Yield file batches whose joined argv length stays well under ARG_MAX.
+    # macOS ARG_MAX is ~256 KiB; we cap at 96 KiB to leave room for env.
+    private def each_grep_batch(files, max_bytes: 96 * 1024)
+      batch = []
+      size  = 0
+      files.each do |f|
+        len = f.bytesize + 1
+        if size + len > max_bytes && !batch.empty?
+          yield batch
+          batch = []
+          size  = 0
+        end
+        batch << f
+        size  += len
+      end
+      yield batch unless batch.empty?
+    end
+
+    private def build_snippet(line, query, radius: 80)
+      bytes = line.b
+      q = query.b
+      idx = bytes.index(q)
+      if idx.nil?
+        head = bytes.byteslice(0, radius * 2).to_s
+        return head.force_encoding("UTF-8").scrub("?").gsub(/\s+/, " ").strip
+      end
+
+      start_byte = [idx - radius, 0].max
+      stop_byte  = [idx + q.bytesize + radius, bytes.bytesize].min
+      snippet = bytes.byteslice(start_byte, stop_byte - start_byte).to_s
+      snippet = snippet.force_encoding("UTF-8").scrub("?")
+      snippet = "…" + snippet if start_byte > 0
+      snippet = snippet + "…" if stop_byte < bytes.bytesize
+      snippet.gsub(/\s+/, " ").strip
+    end
+
+    private def run_with_timeout(env, *cmd, timeout:)
+      Open3.popen3(env, *cmd) do |stdin, stdout, stderr, wait_thr|
+        stdin.close
+        out = +""
+        reader = Thread.new { out << stdout.read }
+        drain  = Thread.new { stderr.read }
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+        loop do
+          remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          break if remaining <= 0
+          break if wait_thr.join(remaining)
+        end
+        if wait_thr.alive?
+          Process.kill("TERM", wait_thr.pid) rescue nil
+          wait_thr.join(0.5)
+          Process.kill("KILL", wait_thr.pid) rescue nil if wait_thr.alive?
+          reader.kill; drain.kill
+          return nil
+        end
+        reader.join; drain.join
+        out
+      end
+    end
+
+    private def extract_short_id(basename)
+      m = basename.match(/-([0-9a-f]{8})(?:-chunk-\d+)?\.(?:json|md)\z/)
+      m && m[1]
     end
 
     # Return the most recent session for a given working directory, or nil.

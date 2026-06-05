@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "set"
+
 module Clacky
   module Server
     # SessionRegistry is the single authoritative source for session state.
@@ -158,7 +160,7 @@ module Clacky
       #   [ ...all_pinned_matching (newest-first), ...non_pinned (newest-first, limited) ]
       #
       # source and profile are orthogonal — either can be nil independently.
-      def list(limit: nil, before: nil, q: nil, date: nil, type: nil, include_pinned: true)
+      def list(limit: nil, before: nil, q: nil, q_scope: "name", date: nil, type: nil, include_pinned: true)
         return [] unless @session_manager
 
         live = @mutex.synchronize do
@@ -195,13 +197,25 @@ module Clacky
         # ── date filter (YYYY-MM-DD, matches created_at prefix) ──────────────
         all = all.select { |s| s[:created_at].to_s.start_with?(date) } if date
 
-        # ── name / id search ─────────────────────────────────────────────────
+        # ── name / id / content search ───────────────────────────────────────
+        content_snippets = nil
         if q && !q.empty?
-          q_down = q.downcase
-          all = all.select { |s|
-            (s[:name] || "").downcase.include?(q_down) ||
-              (s[:session_id] || "").downcase.include?(q_down)
-          }
+          if q_scope == "content"
+            content_snippets = @session_manager.search_content(q)
+            if content_snippets.empty?
+              all = []
+            else
+              prefix_set = content_snippets.keys.to_set
+              all = all.select { |s| prefix_set.include?((s[:session_id] || "")[0, 8]) }
+            end
+          else
+            q_down = q.downcase
+            id_match_eligible = q_down.match?(/\A[0-9a-f]{6,}\z/)
+            all = all.select { |s|
+              (s[:name] || "").downcase.include?(q_down) ||
+                (id_match_eligible && (s[:session_id] || "").downcase.include?(q_down))
+            }
+          end
         end
 
         # ── Split pinned vs non-pinned BEFORE applying `before`/`limit`.
@@ -223,7 +237,15 @@ module Clacky
 
         ordered = pinned_section + non_pinned
 
-        ordered.map { |s| build_enriched_row(s, live[s[:session_id]]) }
+        ordered.map do |s|
+          row = build_enriched_row(s, live[s[:session_id]])
+          if content_snippets
+            short = (s[:session_id] || "")[0, 8]
+            snip = content_snippets[short]
+            row[:search_snippet] = snip if snip
+          end
+          row
+        end
       end
 
       # Return the same enriched hash that a `list` row would produce, for a

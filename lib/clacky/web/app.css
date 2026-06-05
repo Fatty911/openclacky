@@ -856,6 +856,43 @@ body {
   opacity: 0.5;
 }
 
+.session-search-group {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+.session-search-group + .session-search-group {
+  margin-top: 0.25rem;
+}
+
+.session-snippet {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+.session-snippet mark {
+  background: var(--color-warning-bg, #fef3c7);
+  color: var(--color-text-primary);
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.session-name__text mark {
+  background: var(--color-warning-bg, #fef3c7);
+  color: var(--color-text-primary);
+  padding: 0 1px;
+  border-radius: 2px;
+}
+
 /* Legacy .btn-new-inline — kept for compat, can be removed after cleanup */
 .btn-new-inline {
   display: none;
