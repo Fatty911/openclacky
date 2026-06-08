@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.13] - 2026-06-08
+
+### Added
+- Session forking capability (Fork any message to a new session)
+- Gemini Flash 3.5 support and MIMO model pricing
+- Web search content capability and search skill LRU caching
+- Token usage visibility after tool calls
+- Subagent UI formatting for better readability
+
+### Improved
+- Web search performance using Bing race search strategy
+- Input box automatically clears when switching sessions
+- Skill evolution info display simplified
+- TUI adds an extra progress bar for better visual feedback
+
+### Fixed
+- Dir-picker path input synchronization on directory navigation
+- Thinking mode silent retries
+- IME (Input Method Editor) input check issues
+- WebUI reflect bug
+- Upstream JSON loading stability
+- Prevent skill evolution when the last message is incomplete
+
 ## [1.2.12] - 2026-06-05
 
 ### Fixed
