@@ -3917,7 +3917,8 @@ module Clacky
           ok: true,
           enable_compression: @agent_config.enable_compression,
           enable_prompt_caching: @agent_config.enable_prompt_caching,
-          memory_update_enabled: @agent_config.memory_update_enabled
+          memory_update_enabled: @agent_config.memory_update_enabled,
+          proxy_url: @agent_config.proxy_url.to_s
         })
       end
 
@@ -3934,6 +3935,22 @@ module Clacky
         end
         if body.key?("memory_update_enabled")
           @agent_config.memory_update_enabled = !!body["memory_update_enabled"]
+        end
+        if body.key?("proxy_url")
+          raw = body["proxy_url"].to_s.strip
+          if raw.empty?
+            @agent_config.proxy_url = nil
+          else
+            begin
+              uri = URI.parse(raw)
+              unless uri.is_a?(URI::HTTP) && uri.host && !uri.host.empty?
+                return json_response(res, 422, { error: "proxy_url must be a valid http(s) URL" })
+              end
+            rescue URI::InvalidURIError
+              return json_response(res, 422, { error: "proxy_url is not a valid URL" })
+            end
+            @agent_config.proxy_url = raw
+          end
         end
 
         @agent_config.save

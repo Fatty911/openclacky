@@ -3578,6 +3578,37 @@ body {
 }
 .btn-settings-action:hover { background: var(--color-bg-hover); border-color: var(--color-accent-primary); }
 .btn-settings-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.settings-network {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 10px;
+}
+.settings-network-desc {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+.settings-network-url {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.settings-network-url-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+.settings-network-url-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.settings-network-url-row .field-input { flex: 1; }
 .settings-loading, .settings-empty, .settings-error {
   color: var(--color-text-secondary);
   font-size: 0.8125rem;

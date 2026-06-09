@@ -870,6 +870,25 @@
             </div>
           </section>
 
+          <!-- Network / Proxy section -->
+          <section class="settings-section" id="network-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.network.title">Network</span>
+            </div>
+            <div class="settings-network">
+              <p class="settings-network-desc" data-i18n="settings.network.desc">Clacky always ignores HTTP_PROXY / HTTPS_PROXY from your shell. To route Clacky's outbound traffic through a proxy, set an explicit URL below.</p>
+              <div class="settings-network-url">
+                <label class="settings-network-url-label" for="settings-proxy-url" data-i18n="settings.network.proxyUrl">Proxy URL</label>
+                <div class="settings-network-url-row">
+                  <input type="text" id="settings-proxy-url" class="field-input" placeholder="http://user:pass@host:port" autocomplete="off" spellcheck="false">
+                  <button type="button" id="btn-save-proxy-url" class="btn-settings-action" data-i18n="settings.network.save">Save</button>
+                  <button type="button" id="btn-clear-proxy-url" class="btn-settings-action" data-i18n="settings.network.clear">Clear</button>
+                </div>
+                <div id="settings-proxy-url-status" class="model-test-result"></div>
+              </div>
+            </div>
+          </section>
+
           <!-- Brand & License section -->
           <section class="settings-section" id="brand-license-section">
             <div class="settings-section-title">

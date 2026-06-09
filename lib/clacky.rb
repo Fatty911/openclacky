@@ -92,6 +92,7 @@ require_relative "clacky/ui2/progress_indicator"
 
 # Utils
 require_relative "clacky/utils/logger"
+require_relative "clacky/proxy_config"
 require_relative "clacky/platform_http_client"
 require_relative "clacky/utils/encoding"
 require_relative "clacky/utils/environment_detector"
@@ -165,3 +166,5 @@ module Clacky
   class BrowserNotReachableError < AgentError; end  # Chrome/Edge not running or remote debugging disabled
   # BrowserManager singleton: Clacky::BrowserManager.instance
 end
+
+Clacky::ProxyConfig.install!
