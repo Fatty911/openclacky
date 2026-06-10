@@ -8,6 +8,21 @@ module Clacky
     # All pricing is based on official API documentation
     PRICING_TABLE = {
       # Claude 4.5 models - tiered pricing based on prompt length
+      "claude-fable-5" => {
+        input: {
+          default: 10.00,              # $10/MTok for prompts ≤ 200K tokens
+          over_200k: 10.00             # same for all tiers
+        },
+        output: {
+          default: 50.00,             # $50/MTok for prompts ≤ 200K tokens
+          over_200k: 50.00            # same for all tiers
+        },
+        cache: {
+          write: 12.50,               # $12.50/MTok cache write (5-min tier)
+          read: 1.00                  # $1.00/MTok cache read
+        }
+      },
+
       "claude-opus-4.5" => {
         input: {
           default: 5.00,              # $5/MTok for prompts ≤ 200K tokens
@@ -633,6 +648,8 @@ module Clacky
         # Support both dot and dash separators (e.g., "4.5", "4-5", "4-6")
         # Also handles Bedrock cross-region prefixes (e.g. "jp.anthropic.claude-sonnet-4-6")
         case model
+        when /claude.*fable.*5/i
+          "claude-fable-5"
         when /claude.*opus.*4[.-]?[5-9]/i
           "claude-opus-4.5"
         when /claude.*sonnet.*4[.-]?[5-9]/i
