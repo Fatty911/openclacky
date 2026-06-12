@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.17] - 2026-06-12
+
+### Added
+- Session sharing to Web UI — share any session via a shareable link with billing integration
+- Share telemetry tracking
+
+### Fixed
+- Markdown rendering in certain edge cases
+- Image blocks not detected in replay round counting, potentially causing history truncation
+- History images served as base64 causing replay lag, now proxied through server
+- WSL kernel repair getting stuck in infinite loop on pending state
+- WeChat QR login fallback showing false stale-session errors
+
+### More
+- Background color styling update
+
 ## [1.2.16] - 2026-06-10
 
 ### Added
