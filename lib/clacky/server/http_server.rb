@@ -1447,6 +1447,8 @@ module Clacky
             branded:                       true,
             needs_activation:              true,
             product_name:                  brand.product_name,
+            homepage_url:                  brand.homepage_url,
+            logo_url:                      brand.logo_url,
             test_mode:                     @brand_test,
             distribution_refresh_pending:  refresh_pending
           })
@@ -1486,6 +1488,8 @@ module Clacky
           branded:          true,
           needs_activation: false,
           product_name:     brand.product_name,
+          homepage_url:     brand.homepage_url,
+          logo_url:         brand.logo_url,
           warning:          warning,
           test_mode:        @brand_test,
           user_licensed:    brand.user_licensed?,
