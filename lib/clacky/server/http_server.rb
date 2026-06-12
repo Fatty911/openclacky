@@ -453,6 +453,7 @@ module Clacky
         when ["POST",   "/api/browser/configure"]  then api_browser_configure(req, res)
         when ["POST",   "/api/browser/reload"]    then api_browser_reload(res)
         when ["POST",   "/api/browser/toggle"]    then api_browser_toggle(res)
+        when ["POST",   "/api/telemetry"]        then api_telemetry(req, res)
         when ["POST",   "/api/onboard/complete"]  then api_onboard_complete(req, res)
         when ["POST",   "/api/onboard/skip-soul"] then api_onboard_skip_soul(req, res)
         when ["GET",    "/api/store/skills"]          then api_store_skills(res)
@@ -855,6 +856,17 @@ module Clacky
       def api_browser_toggle(res)
         enabled = @browser_manager.toggle
         json_response(res, 200, { ok: true, enabled: enabled })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # POST /api/telemetry
+      # Body: { "event": "share_open" | "share_download", ... }
+      # Fire-and-forget telemetry from the WebUI frontend.
+      def api_telemetry(req, res)
+        body = parse_json_body(req) || {}
+        Clacky::Telemetry.share!(event: body["event"], extra: body["extra"])
+        json_response(res, 200, { ok: true })
       rescue StandardError => e
         json_response(res, 500, { ok: false, error: e.message })
       end
