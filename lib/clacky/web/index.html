@@ -43,6 +43,14 @@
                 title="Creator / Owner" data-i18n-title="header.owner.tooltip">OWNER</button>
       </div>
     </div>
+    <div id="header-center">
+      <button id="header-cmdbar" type="button" title="Search sessions"
+              onclick="document.getElementById('btn-session-search-toggle')?.click()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <span class="cmdbar-ph" data-i18n="header.cmdbar.placeholder">Search sessions…</span>
+        <span class="cmdbar-kbd">⌘K</span>
+      </button>
+    </div>
     <div id="header-right">
       <button id="share-toggle-header" class="theme-toggle-btn" data-i18n-title="share.tooltip" title="Share">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
@@ -295,10 +303,30 @@
 
     <!-- Welcome screen -->
     <div id="welcome" class="centered">
-      <div class="welcome-icon" style="display:none"></div>
-      <h2 id="welcome-title" data-i18n="welcome.title" data-i18n-vars="brand={{BRAND_NAME}}">Welcome to {{BRAND_NAME}}</h2>
-      <p data-i18n="welcome.body">Create a new session or select one from the sidebar.</p>
-      <button id="btn-welcome-new" data-i18n="welcome.btn">New Session</button>
+      <div class="ce-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/>
+        </svg>
+      </div>
+      <div class="ce-head">
+        <h2 id="welcome-title" class="ce-title" data-i18n="welcome.title" data-i18n-vars="brand={{BRAND_NAME}}">What should we build?</h2>
+        <p class="ce-sub" data-i18n="welcome.body">Your agent is standing by. Pick a starting point or just type.</p>
+      </div>
+      <div class="chips">
+        <button class="chip" data-welcome-prompt="welcome.chip.code.prompt">
+          <span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg></span>
+          <span class="ct-wrap"><span class="ct" data-i18n="welcome.chip.code.title">Write code</span><span class="cd" data-i18n="welcome.chip.code.desc">build, refactor, debug</span></span>
+        </button>
+        <button class="chip" data-welcome-prompt="welcome.chip.task.prompt">
+          <span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <span class="ct-wrap"><span class="ct" data-i18n="welcome.chip.task.title">Automate a task</span><span class="cd" data-i18n="welcome.chip.task.desc">schedule, run, repeat</span></span>
+        </button>
+        <button class="chip" data-welcome-prompt="welcome.chip.research.prompt">
+          <span class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V6a2 2 0 0 1 2-2h12v16H6a2 2 0 0 1-2-2z"/><path d="M8 7h7"/></svg></span>
+          <span class="ct-wrap"><span class="ct" data-i18n="welcome.chip.research.title">Research</span><span class="cd" data-i18n="welcome.chip.research.desc">search, read, summarize</span></span>
+        </button>
+      </div>
+      <button id="btn-welcome-new" class="ce-blank" data-i18n="welcome.btn">Start a blank session</button>
     </div>
 
     <!-- Scheduled Tasks list panel (shown when user clicks "Scheduled Tasks") -->
@@ -406,9 +434,9 @@
           </button>
           <textarea id="user-input" rows="1"
             data-i18n-placeholder="chat.input.placeholder"
-            placeholder="Message… (Enter to send, Shift+Enter for newline)"></textarea>
-          <button id="btn-send" data-i18n="chat.btn.send">Send</button>
-          <button id="btn-interrupt" style="display:none" title="Stop"></button>
+            placeholder="Message… (Enter to send, Shift-Enter for newline)"></textarea>
+          <button id="btn-send" title="Send message"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
+          <button id="btn-interrupt" style="display:none" title="Stop"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
         </div>
       </div>
       </div><!-- /#chat-main -->
