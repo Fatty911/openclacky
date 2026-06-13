@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.18] - 2026-06-13
+
+### Added
+- Alibaba DashScope (Qwen-Image) as a new image generation backend
+- "Always show" toggle for media-gen and skill-creators default skills, keeping them visible in all sessions
+
+### Fixed
+- Brand skill files not accessible outside their initial session context
+- `/model` command
+
+### More
+- Brand skills page now auto-refreshes on enter
+
 ## [1.2.17] - 2026-06-12
 
 ### Added
