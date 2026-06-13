@@ -346,7 +346,7 @@ module Clacky
 
         # For encrypted brand skills with supporting scripts: decrypt to a tmpdir so the
         # LLM receives the real paths it can execute. The tmpdir is registered on the agent
-        # and shredded when agent.run completes (see Agent#shred_script_tmpdirs).
+        # and lives for the agent's lifetime (the session).
         script_dir = nil
         if skill.encrypted? && skill.has_supporting_files?
           script_dir = Dir.mktmpdir("clacky-skill-#{skill.identifier}-")

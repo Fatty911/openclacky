@@ -42,7 +42,7 @@ module Clacky
 
     attr_reader :session_id, :name, :history, :iterations, :total_cost, :working_dir, :created_at, :total_tasks, :todos,
                 :cache_stats, :cost_source, :ui, :skill_loader, :agent_profile,
-                :status, :error, :updated_at, :source,
+                :status, :error, :updated_at, :source, :config,
                 :latest_latency,  # Hash of latency metrics from the most recent LLM call (see Client#send_messages_with_tools)
                 :reasoning_effort
     attr_accessor :pinned
@@ -102,7 +102,7 @@ module Clacky
       @ui = ui  # UIController for direct UI interaction
       @debug_logs = []  # Debug logs for troubleshooting
       @pending_injections = []     # Pending inline skill injections to flush after observe()
-      @pending_script_tmpdirs = [] # Decrypted-script tmpdirs to shred when agent.run completes
+      @pending_script_tmpdirs = [] # Decrypted-script tmpdirs that live for the agent's lifetime
       @pending_error_rollback = false  # Deferred rollback flag set by restore_session on error
       @last_run_interrupted = false    # Set when run() exits via AgentInterrupted; tells the next run() to keep the task-start snapshot (continuation of the same task across a relay, not a brand-new task)
 
@@ -677,11 +677,6 @@ module Clacky
         Clacky::Logger.warn("[ph_debug] agent_run_ensure")
         @ui&.show_progress(phase: "done")
 
-        # Shred any decrypted-script tmpdirs created during this run for encrypted brand skills.
-        # This covers the inline-injection path; the subagent path shreds immediately after
-        # subagent.run returns (see execute_skill_with_subagent).
-        shred_script_tmpdirs
-
         # Fire-and-forget telemetry after every agent run.
         # Tracks daily active users (distinct devices per day) and task volume.
         Clacky::Telemetry.task!(result: result)
@@ -1055,7 +1050,7 @@ module Clacky
           else
             # Use tool's format_result method to get display-friendly string
             formatted_result = tool.respond_to?(:format_result) ? tool.format_result(result) : result.to_s
-            @ui&.show_tool_result(formatted_result)
+            @ui&.show_tool_result(redact_tool_args(formatted_result))
           end
 
           results << build_success_result(call, result)
@@ -1073,7 +1068,7 @@ module Clacky
           Clacky::Logger.error("tool_execution_error", tool: call[:name], error: e)
 
           @hooks.trigger(:on_tool_error, call, e)
-          @ui&.show_tool_error(e)
+          @ui&.show_tool_error(redact_tool_args(e.message))
           # Use build_denied_result with system_injected=true so LLM knows it can retry
           results << build_denied_result(call, e.message, true)
         end
@@ -1176,8 +1171,8 @@ module Clacky
     end
 
     # Register a tmpdir that contains decrypted brand skill scripts.
-    # SkillManager calls this after decrypt_all_scripts so agent.run's ensure block
-    # can shred it when the run completes.
+    # SkillManager calls this after decrypt_all_scripts. The tmpdir lives for
+    # the agent's lifetime (a session), not just a single agent.run.
     # @param dir [String] Absolute path to the tmpdir
     def register_script_tmpdir(dir)
       @pending_script_tmpdirs << dir
