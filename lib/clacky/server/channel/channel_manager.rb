@@ -442,8 +442,10 @@ module Clacky
         Commands:
           ? / h / help - show this help
           /new / /clear - start a new session
-          /model - show current model & available models
-          /model <n> - switch to model n
+          /model - show current model, cards & quick-switch list
+          /model <n> - switch card by number
+          /model s<n> - quick-switch model under current card
+          /model off - reset to card default
           /skills - list available skills
           /<skill> <args> - invoke a skill directly
           /bind <n|session_id> - switch to a session (use /list to see numbers)
@@ -472,44 +474,126 @@ module Clacky
         arg = text.sub(/\A\/model\s*/i, "").strip
 
         if arg.empty?
-          # Show current model and available list
-          info = agent.current_model_info
-          current = info&.dig(:model) || "unknown"
-          sub     = info&.dig(:sub_model)
-          card    = info&.dig(:card_model)
-          header  = "Current model: #{current}"
-          header += " (#{card} · #{sub})" if card && sub && sub != current
-          header += " (#{card})" if card && !sub
+          show_model_list(adapter, chat_id, agent)
+        elsif arg =~ /\A\d+\z/
+          switch_model_by_index(adapter, chat_id, agent, arg.to_i - 1)
+        elsif arg =~ /\As(\d+)\z/i
+          switch_quick_by_index(adapter, chat_id, agent, $1.to_i - 1)
+        else
+          switch_model_by_name(adapter, chat_id, agent, arg)
+        end
+      end
 
-          models = agent.available_models
-          if models.empty?
-            adapter.send_text(chat_id, "#{header}\nNo other models available.")
-            return
-          end
+      def show_model_list(adapter, chat_id, agent)
+        info = agent.current_model_info
+        current = info&.dig(:model) || "unknown"
+        sub     = info&.dig(:sub_model)
+        card    = info&.dig(:card_model)
 
+        header  = "Current: #{current}"
+        header += " (#{card})" if card && sub && sub != current
+        header += " (#{card})" if card && !sub
+
+        result = header
+
+        # Card list
+        models = agent.available_models
+        unless models.empty?
           lines = models.each_with_index.map do |name, i|
             marker = name == current ? " *" : ""
             "#{i + 1}. #{name}#{marker}"
           end
-          adapter.send_text(chat_id, "#{header}\n\nSwitch with /model <n>:\n#{lines.join("\n")}")
-        elsif arg =~ /\A\d+\z/
-          idx = arg.to_i - 1
-          models = agent.config.models
-          if idx < 0 || idx >= models.length
-            adapter.send_text(chat_id, "Invalid model number. Use /model to see available models.")
-            return
-          end
-
-          model_id = models[idx]["id"]
-          if agent.switch_model_by_id(model_id)
-            new_info = agent.current_model_info
-            adapter.send_text(chat_id, "Switched to #{new_info&.dig(:model) || model_id}.")
-          else
-            adapter.send_text(chat_id, "Failed to switch model.")
-          end
-        else
-          adapter.send_text(chat_id, "Usage: /model to list, /model <n> to switch.")
+          result += "\n\nCards (/model <n>):\n#{lines.join("\n")}"
         end
+
+        # Quick-switch models under current provider
+        info = agent.current_model_info
+        provider_id = Clacky::Providers.find_by_base_url(info&.dig(:base_url))
+        if provider_id
+          quick = Clacky::Providers.models(provider_id)
+          unless quick.empty?
+            current_for_quick = sub || current
+            quick_lines = quick.each_with_index.map do |name, i|
+              marker = name == current_for_quick ? " *" : ""
+              "  s#{i + 1}. #{name}#{marker}"
+            end
+            result += "\n\nQuick switch (/model s<n>):\n#{quick_lines.join("\n")}"
+            unless quick.include?(current_for_quick)
+              result += "\n(#{current_for_quick} not in this provider; switch card first)"
+            end
+          end
+        end
+
+        adapter.send_text(chat_id, result)
+      end
+
+      def switch_model_by_index(adapter, chat_id, agent, idx)
+        models = agent.config.models
+        if idx < 0 || idx >= models.length
+          adapter.send_text(chat_id, "Invalid number. Use /model to see available cards.")
+          return
+        end
+
+        model_id = models[idx]["id"]
+        if agent.switch_model_by_id(model_id)
+          new_info = agent.current_model_info
+          adapter.send_text(chat_id, "Switched to #{new_info&.dig(:model) || model_id}.")
+        else
+          adapter.send_text(chat_id, "Failed to switch model.")
+        end
+      end
+
+      def switch_quick_by_index(adapter, chat_id, agent, idx)
+        info = agent.current_model_info
+        provider_id = Clacky::Providers.find_by_base_url(info&.dig(:base_url))
+
+        unless provider_id
+          adapter.send_text(chat_id, "No quick-switch models. Use /model <n> to switch card.")
+          return
+        end
+
+        quick = Clacky::Providers.models(provider_id)
+        if idx < 0 || idx >= quick.length
+          adapter.send_text(chat_id, "Invalid s#{idx + 1}. Use /model to see quick-switch list.")
+          return
+        end
+
+        agent.set_session_sub_model(quick[idx])
+        new_info = agent.current_model_info
+        adapter.send_text(chat_id, "Switched to #{new_info&.dig(:sub_model) || new_info&.dig(:model)}.")
+      end
+
+      def switch_model_by_name(adapter, chat_id, agent, name)
+        info = agent.current_model_info
+        provider_id = Clacky::Providers.find_by_base_url(info&.dig(:base_url))
+
+        unless provider_id
+          adapter.send_text(chat_id, "Current card has no quick-switch models. Use /model <n> to switch card.")
+          return
+        end
+
+        allowed = Clacky::Providers.models(provider_id)
+        if allowed.empty?
+          adapter.send_text(chat_id, "No quick-switch models available. Use /model <n> to switch card.")
+          return
+        end
+
+        # Clear override
+        if name =~ /\A(off|clear|none)\z/i
+          agent.set_session_sub_model(nil)
+          new_info = agent.current_model_info
+          adapter.send_text(chat_id, "Back to card default (#{new_info&.dig(:model)}).")
+          return
+        end
+
+        unless allowed.include?(name)
+          adapter.send_text(chat_id, "'#{name}' not available. Use /model to see quick-switch list.")
+          return
+        end
+
+        agent.set_session_sub_model(name)
+        new_info = agent.current_model_info
+        adapter.send_text(chat_id, "Switched to #{new_info&.dig(:sub_model) || new_info&.dig(:model)}.")
       end
 
       def handle_skills_command(adapter, event)
