@@ -3,6 +3,7 @@
 require "webrick"
 require "websocket"
 require "socket"
+require "digest"
 require "json"
 require "net/http"
 require "faraday"
@@ -449,6 +450,8 @@ module Clacky
         when ["POST",   "/api/internal/ocr-image"] then api_internal_ocr_image(req, res)
         when ["GET",    "/api/providers"]     then api_list_providers(res)
         when ["GET",    "/api/onboard/status"]    then api_onboard_status(res)
+        when ["POST",   "/api/onboard/device/start"] then api_onboard_device_start(req, res)
+        when ["POST",   "/api/onboard/device/poll"]  then api_onboard_device_poll(req, res)
         when ["GET",    "/api/browser/status"]    then api_browser_status(res)
         when ["POST",   "/api/browser/configure"]  then api_browser_configure(req, res)
         when ["POST",   "/api/browser/reload"]    then api_browser_reload(res)
@@ -821,6 +824,92 @@ module Clacky
           json_response(res, 200, { needs_onboard: false })
         end
       end
+
+      # POST /api/onboard/device/start
+      # Kicks off a device-authorization flow against the platform. Returns the
+      # device_code (held by the client for polling) plus the user-facing
+      # verification URL the browser should open.
+      def api_onboard_device_start(req, res)
+        client = Clacky::PlatformHttpClient.new
+        result = client.post("/api/v1/device/authorize", {
+          device_id:   onboard_device_id,
+          device_info: { os: RUBY_PLATFORM, hostname: Socket.gethostname, app_version: Clacky::VERSION }
+        })
+
+        if result[:success]
+          data = result[:data]
+          json_response(res, 200, {
+            ok:                        true,
+            device_code:               data["device_code"],
+            user_code:                 data["user_code"],
+            verification_uri:          data["verification_uri"],
+            verification_uri_complete: data["verification_uri_complete"],
+            interval:                  data["interval"] || 5
+          })
+        else
+          json_response(res, 502, { ok: false, error: result[:error] })
+        end
+      end
+
+      # POST /api/onboard/device/poll  { device_code }
+      # Polls the platform once. While pending, returns { status: "pending" }.
+      # On approval, persists the issued key into agent_config and returns
+      # { status: "approved" } so the frontend can proceed to the onboard session.
+      def api_onboard_device_poll(req, res)
+        body        = parse_json_body(req) || {}
+        device_code = body["device_code"].to_s
+        if device_code.empty?
+          return json_response(res, 422, { ok: false, error: "device_code is required" })
+        end
+
+        client = Clacky::PlatformHttpClient.new
+        result = client.post("/api/v1/device/token", { device_code: device_code })
+        data   = result[:data] || {}
+        status = data["status"]
+
+        if result[:success] && status == "approved"
+          persist_onboard_model(
+            api_key:  data["api_key"],
+            base_url: data["base_url"],
+            model:    data["default_model"]
+          )
+          json_response(res, 200, { ok: true, status: "approved" })
+        elsif status == "pending"
+          json_response(res, 200, { ok: true, status: "pending" })
+        else
+          # denied / expired / consumed / network error — surface to the client.
+          json_response(res, 200, {
+            ok:     false,
+            status: status || "error",
+            error:  result[:error]
+          })
+        end
+      end
+
+      # Stable per-machine id for the onboarding device flow. Independent of the
+      # brand/license device_id — onboarding can happen before any license.
+      private def onboard_device_id
+        components = [Socket.gethostname, ENV["USER"] || ENV["USERNAME"] || "", RUBY_PLATFORM]
+        Digest::SHA256.hexdigest(components.join(":"))
+      end
+
+      # Persist a device-flow-issued model as the default and re-anchor current_*.
+      private def persist_onboard_model(api_key:, base_url:, model:)
+        @agent_config.models.each { |m| m.delete("type") if m["type"] == "default" }
+        entry = {
+          "id"               => SecureRandom.uuid,
+          "model"            => model,
+          "base_url"         => base_url,
+          "api_key"          => api_key,
+          "anthropic_format" => false,
+          "type"             => "default"
+        }
+        @agent_config.models << entry
+        @agent_config.current_model_id    = entry["id"]
+        @agent_config.current_model_index = @agent_config.models.length - 1
+        @agent_config.save
+      end
+
 
       # GET /api/browser/status
       # Returns real daemon liveness from BrowserManager (not just yml read).

@@ -1153,6 +1153,42 @@
     <div id="setup-phase-key" style="display:none">
       <p class="setup-phase-label" data-i18n="onboard.key.title">Connect your AI model</p>
 
+      <!-- Primary path: one-click device login -->
+      <div id="setup-device-block">
+        <div id="setup-device-card" class="setup-device-card">
+          <div class="setup-device-card-head">
+            <span class="setup-device-card-title" data-i18n="onboard.device.card.title">OpenClacky AI Keys</span>
+            <span class="setup-device-card-badge" data-i18n="provider.recommended">Recommended</span>
+          </div>
+          <p class="setup-device-card-lead" data-i18n="onboard.device.card.lead">Sign up and get $1 free credit · no subscription · pay as you go</p>
+          <ul class="setup-device-card-points">
+            <li data-i18n="onboard.device.card.point1">One key for all frontier models — Claude, Gemini, DeepSeek &amp; more</li>
+            <li data-i18n="onboard.device.card.point2">Same pricing as official APIs, switch models instantly</li>
+          </ul>
+          <button id="setup-btn-device-login" class="setup-submit-btn setup-device-btn">
+            <span data-i18n="onboard.device.btn">Get started free →</span>
+          </button>
+        </div>
+
+        <!-- Pending state: shown while waiting for browser approval -->
+        <div id="setup-device-pending" style="display:none">
+          <div class="setup-device-spinner"></div>
+          <p class="setup-device-pending-text" data-i18n="onboard.device.pending">Waiting for confirmation in your browser…</p>
+          <p class="setup-device-code">
+            <span data-i18n="onboard.device.code">Verification code:</span>
+            <strong id="setup-device-usercode">—</strong>
+          </p>
+          <a id="setup-device-link" href="#" target="_blank" rel="noopener" class="setup-device-reopen" data-i18n="onboard.device.reopen">Open browser again →</a>
+          <button id="setup-device-cancel" class="setup-back-btn" data-i18n="onboard.device.cancel">Cancel</button>
+        </div>
+
+        <div id="setup-device-error" class="setup-test-result" style="min-height:0;"></div>
+      </div>
+
+      <!-- Secondary path: manual key entry, collapsed by default -->
+      <details id="setup-manual-details">
+        <summary id="setup-manual-summary" data-i18n="onboard.manual.toggle">Configure manually with your own API key</summary>
+
       <div class="setup-field">
         <label class="setup-label" data-i18n="onboard.key.provider">Provider</label>
         <div class="custom-select-wrapper" id="setup-provider-wrapper">
@@ -1218,6 +1254,7 @@
         <button id="setup-btn-back" class="setup-back-btn" data-i18n="onboard.key.btn.back">← Back</button>
         <button id="setup-btn-test" class="setup-submit-btn" data-i18n="onboard.key.btn.test">Test & Continue →</button>
       </div>
+      </details>
     </div>
 
   </div>
