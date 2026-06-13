@@ -1094,7 +1094,8 @@ RSpec.describe Clacky::Server::HttpServer do
           user_invocable?:      true,
           disabled?:            false,
           allowed_for_agent?:   true,
-          encrypted?:           false
+          encrypted?:           false,
+          always_show:          false
         )
         allow(mock_skill).to receive(:allowed_for_agent?).with(anything).and_return(true)
 

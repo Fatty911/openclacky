@@ -3,6 +3,7 @@ name: media-gen
 description: 'Generate images (and later videos / audio) inside the current task. Use this skill whenever the user asks to create, generate, or produce a picture / image / illustration / cover / poster / icon / artwork — including phrases like 生成图片, 画一张, 做封面, 来张配图, generate image, make a picture, draw, create artwork, design a cover. Also use when building documents (slides, PPT, posters, marketing pages, README hero shots) where an image is needed inline. Routes calls through the local Clacky HTTP server, which uses the user-configured `type=image` model — you do NOT need to know which provider; the server handles it.'
 disable-model-invocation: false
 user-invocable: true
+always-show: true
 ---
 
 # media-gen

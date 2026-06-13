@@ -3032,6 +3032,7 @@ module Clacky
             description:       skill.context_description,
             description_zh:    skill.description_zh,
             source:            source,
+            always_show:       skill.always_show,
             enabled:           !skill.disabled?,
             invalid:           skill.invalid?,
             warnings:          skill.warnings,
@@ -3084,7 +3085,8 @@ module Clacky
             description:    skill.description || skill.context_description,
             description_zh: skill.description_zh,
             encrypted:      skill.encrypted?,
-            source_type:    source_type
+            source_type:    source_type,
+            always_show:    skill.always_show
           }
         end
 
