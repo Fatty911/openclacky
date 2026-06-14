@@ -44,7 +44,7 @@ module Clacky
           error:                nil,
           error_code:           nil,
           top_up_url:           nil,
-          updated_at:           Time.now,
+          updated_at:           nil,
           agent:                nil,
           ui:                   nil,
           thread:               nil,
@@ -170,6 +170,7 @@ module Clacky
             live_name  = nil if live_name&.empty?
           live_cost_source = s[:agent]&.cost_source
           { status: s[:status], error: s[:error], error_code: s[:error_code], top_up_url: s[:top_up_url],
+            updated_at: s[:updated_at]&.iso8601,
             model: model_info&.dig(:model), model_id: model_info&.dig(:id), name: live_name,
             total_tasks: s[:agent]&.total_tasks, total_cost: s[:agent]&.total_cost,
             cost_source: live_cost_source,
@@ -227,7 +228,9 @@ module Clacky
         pinned, non_pinned = all.partition { |s| s[:pinned] }
 
         # `before` cursor ONLY applies to non-pinned (paginated) sessions.
-        non_pinned = non_pinned.select { |s| (s[:created_at] || "") < before } if before
+        # Cursor field must match the sort key in all_sessions (updated_at,
+        # falling back to created_at for legacy rows).
+        non_pinned = non_pinned.select { |s| (s[:updated_at] || s[:created_at] || "") < before } if before
         non_pinned = non_pinned.first(limit) if limit
 
         # Pinned section: only included on the first page (before == nil) so
@@ -267,6 +270,7 @@ module Clacky
           live_name  = s[:agent]&.name
           live_name  = nil if live_name&.empty?
           { status: s[:status], error: s[:error], error_code: s[:error_code], top_up_url: s[:top_up_url],
+            updated_at: s[:updated_at]&.iso8601,
             model: model_info&.dig(:model), model_id: model_info&.dig(:id),
             name: live_name, total_tasks: s[:agent]&.total_tasks,
             total_cost: s[:agent]&.total_cost, cost_source: s[:agent]&.cost_source,
@@ -301,7 +305,7 @@ module Clacky
           agent_profile: (s[:agent_profile] || "general").to_s,
           working_dir:   s[:working_dir],
           created_at:    s[:created_at],
-          updated_at:    s[:updated_at],
+          updated_at:    ls&.dig(:updated_at) || s[:updated_at],
           total_tasks:   ls&.dig(:total_tasks) || s.dig(:stats, :total_tasks) || 0,
           total_cost:    ls&.dig(:total_cost)  || s.dig(:stats, :total_cost_usd) || 0.0,
           cost_source:   (ls&.dig(:cost_source) || s.dig(:stats, :cost_source) || "estimated").to_s,

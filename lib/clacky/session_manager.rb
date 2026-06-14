@@ -162,14 +162,15 @@ module Clacky
       chunk_path
     end
 
-    # All sessions from disk, newest-first (sorted by created_at).
+    # All sessions from disk, newest-first (sorted by last activity / updated_at,
+    # falling back to created_at for legacy sessions without updated_at).
     # Optional filters:
     #   current_dir: (String) if given, sessions matching working_dir come first
     #   limit:       (Integer) max number of sessions to return
     def all_sessions(current_dir: nil, limit: nil)
       sessions = Dir.glob(File.join(@sessions_dir, "*.json")).filter_map do |filepath|
         load_session_file(filepath)
-      end.sort_by { |s| s[:created_at] || "" }.reverse
+      end.sort_by { |s| s[:updated_at] || s[:created_at] || "" }.reverse
 
       if current_dir
         current_sessions = sessions.select { |s| s[:working_dir] == current_dir }

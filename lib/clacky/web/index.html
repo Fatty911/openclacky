@@ -44,8 +44,7 @@
       </div>
     </div>
     <div id="header-center">
-      <button id="header-cmdbar" type="button" title="Search sessions"
-              onclick="document.getElementById('btn-session-search-toggle')?.click()">
+      <button id="header-cmdbar" type="button" title="Search sessions">
         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
         <span class="cmdbar-ph" data-i18n="header.cmdbar.placeholder">Search sessions…</span>
         <span class="cmdbar-kbd">⌘K</span>
@@ -70,6 +69,42 @@
     </div>
   </header>
 
+  <!-- ── Command-palette search overlay (⌘K / top cmdbar) ─────────────────── -->
+  <!-- Search lives here, decoupled from the sidebar list: results render in
+       #session-search-results and the left session list is never replaced. -->
+  <div id="session-search-overlay" class="cmd-palette-overlay" hidden>
+    <div class="cmd-palette" role="dialog" aria-modal="true" aria-label="Search sessions">
+      <div class="search-panel-card">
+        <!-- Input row -->
+        <div class="search-input-row">
+          <span class="search-icon">🔍</span>
+          <input id="session-search-q" type="text" class="search-input"
+                 data-i18n-placeholder="sessions.search.placeholder" placeholder="Search sessions…"
+                 autocomplete="off" />
+          <button id="btn-search-q-clear" class="btn-search-q-clear" aria-label="Clear text" hidden>✕</button>
+          <button id="btn-session-search-close" class="cmd-palette-esc" type="button" aria-label="Close">ESC</button>
+        </div>
+        <!-- Filter row -->
+        <div class="search-filter-row">
+          <select id="session-search-type" class="search-select">
+            <option value=""        data-i18n="sessions.search.typeAll">All types</option>
+            <option value="manual"  data-i18n="sessions.search.typeManual">Default</option>
+            <option value="cron"    data-i18n="sessions.search.typeCron">Scheduled</option>
+            <option value="channel" data-i18n="sessions.search.typeChannel">Channel</option>
+            <option value="setup"   data-i18n="sessions.search.typeSetup">Setup</option>
+            <option value="coding"  data-i18n="sessions.search.typeCoding">Coding</option>
+          </select>
+          <div class="search-date-wrap">
+            <button id="session-search-date" class="search-date datepicker-trigger" type="button" data-value="" data-i18n="sessions.search.datePlaceholder"></button>
+          </div>
+          <button id="btn-search-clear-all" class="btn-search-clear-all" aria-label="Clear filters" hidden>✕</button>
+        </div>
+      </div>
+      <!-- Results render here (independent from the sidebar session list) -->
+      <div id="session-search-results" class="cmd-palette-results"></div>
+    </div>
+  </div>
+
   <!-- ── Sidebar overlay (mobile only) ───────────────────────────────────── -->
   <div id="sidebar-overlay"></div>
 
@@ -82,17 +117,10 @@
     <div id="sidebar-list">
       <!-- Chat Group -->
       <div id="chat-section">
-        <!-- Header: "Sessions" label + 🔍 + [+ ▾] split button -->
+        <!-- Header: "Sessions" label + [+ ▾] split button -->
         <div class="sidebar-divider">
           <span data-i18n="sidebar.chat">Sessions</span>
           <div class="sidebar-divider-actions">
-            <!-- Magnifier toggle (shown when ≥10 sessions, managed by JS) -->
-            <button id="btn-session-search-toggle" class="btn-icon-sm" title="Search sessions" style="display:none" aria-label="Search sessions">
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.6"/>
-                <line x1="10.3" y1="10.3" x2="14" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-              </svg>
-            </button>
             <div class="btn-split-wrap">
               <button id="btn-new-session-inline" class="btn-split-main" title="New Session" data-i18n="sessions.newSession">+ New Session</button>
               <button id="btn-new-session-arrow" class="btn-split-arrow" title="Options">▾</button>
@@ -105,35 +133,6 @@
                   <span data-i18n="sessions.newSessionAdvanced">More Options</span>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Search panel (hidden by default, toggled by magnifier button) -->
-        <div id="session-search-bar" class="session-search-panel" hidden>
-          <div class="search-panel-card">
-            <!-- Input row -->
-            <div class="search-input-row">
-              <span class="search-icon">🔍</span>
-              <input id="session-search-q" type="text" class="search-input"
-                     data-i18n-placeholder="sessions.search.placeholder" placeholder="Search sessions…"
-                     autocomplete="off" />
-              <button id="btn-search-q-clear" class="btn-search-q-clear" aria-label="Clear text" hidden>✕</button>
-            </div>
-            <!-- Filter row -->
-            <div class="search-filter-row">
-              <select id="session-search-type" class="search-select">
-                <option value=""        data-i18n="sessions.search.typeAll">All types</option>
-                <option value="manual"  data-i18n="sessions.search.typeManual">Default</option>
-                <option value="cron"    data-i18n="sessions.search.typeCron">Scheduled</option>
-                <option value="channel" data-i18n="sessions.search.typeChannel">Channel</option>
-                <option value="setup"   data-i18n="sessions.search.typeSetup">Setup</option>
-                <option value="coding"  data-i18n="sessions.search.typeCoding">Coding</option>
-              </select>
-              <div class="search-date-wrap">
-                <button id="session-search-date" class="search-date datepicker-trigger" type="button" data-value="" data-i18n="sessions.search.datePlaceholder"></button>
-              </div>
-              <button id="btn-search-clear-all" class="btn-search-clear-all" aria-label="Clear filters" hidden>✕</button>
             </div>
           </div>
         </div>
