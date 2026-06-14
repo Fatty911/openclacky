@@ -925,6 +925,33 @@
             </div>
           </section>
 
+          <!-- Backup section -->
+          <section class="settings-section" id="backup-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.backup.title">Backup</span>
+            </div>
+            <p class="settings-section-desc" data-i18n="settings.backup.desc">Back up your ~/.clacky directory (config, skills, memories, tasks, sessions). Regenerable caches and logs are excluded.</p>
+
+            <div class="backup-auto-row">
+              <label class="toggle-switch">
+                <input type="checkbox" id="backup-auto-toggle">
+                <span class="toggle-slider"></span>
+              </label>
+              <span class="backup-auto-label" data-i18n="settings.backup.autoLabel">Automatic backup</span>
+              <span class="backup-auto-hint" data-i18n="settings.backup.autoHint">Daily at 03:00, keeps the latest 7</span>
+            </div>
+
+            <label class="backup-option">
+              <input type="checkbox" id="backup-include-sessions">
+              <span data-i18n="settings.backup.includeSessions">Include session history (larger archive)</span>
+            </label>
+
+            <div class="backup-actions">
+              <button id="btn-backup-now" class="btn-settings-action" data-i18n="settings.backup.runNow">💾 Download backup</button>
+              <span id="backup-status" class="model-test-result"></span>
+            </div>
+          </section>
+
           <!-- Brand & License section -->
           <section class="settings-section" id="brand-license-section">
             <div class="settings-section-title">
@@ -1402,6 +1429,7 @@
 <script src="/skills.js"></script>
 <script src="/channels.js"></script>
 <script src="/mcp.js"></script>
+<script src="/backup.js"></script>
 <script src="/model-tester.js"></script>
 <script src="/settings.js"></script>
 <script src="/billing.js"></script>

@@ -605,12 +605,6 @@ module Clacky
 
       result = build_result
 
-      # Save snapshots of modified files for Time Machine
-      if @modified_files_in_task && !@modified_files_in_task.empty?
-        save_modified_files_snapshot(@modified_files_in_task)
-        @modified_files_in_task = []  # Reset for next task
-      end
-
         # Run skill evolution hooks after main loop completes
         # Skip if task was interrupted by user (denied tool) or awaiting user feedback
         # Only for main agent (not subagents) to avoid recursive evolution
@@ -1004,6 +998,10 @@ module Clacky
           # instant tools like edit/write/read/glob/grep. Truly slow
           # tools (terminal running a build, web_fetch) exceed the
           # threshold and their final frame is preserved as usual.
+          # Record BEFORE-change snapshots for Time Machine right before the
+          # tool runs, so undo can restore (or delete) any file it touches.
+          record_tool_target_before(call[:name], args)
+
           result = nil
           if @ui
             progress_message = build_tool_progress_message(call[:name], args)
@@ -1017,9 +1015,6 @@ module Clacky
           else
             result = tool.execute(**args)
           end
-
-          # Track modified files for Time Machine snapshots
-          track_modified_files(call[:name], args)
 
           # Hook: after_tool_use
           @hooks.trigger(:after_tool_use, call, result)
@@ -1809,17 +1804,14 @@ module Clacky
       @ui&.show_assistant_message(full_content, files: parsed[:files])
     end
 
-    # Track modified files for Time Machine snapshots
-    # @param tool_name [String] Name of the tool that was executed
+    # Record BEFORE-change snapshots for any file a tool is about to mutate,
+    # so Time Machine can later restore or delete it.
+    # @param tool_name [String] Name of the tool about to be executed
     # @param args [Hash] Arguments passed to the tool
-    def track_modified_files(tool_name, args)
-      @modified_files_in_task ||= []
-
+    private def record_tool_target_before(tool_name, args)
       case tool_name
       when "write", "edit"
-        file_path = args[:path]
-        full_path = File.expand_path(file_path, @working_dir)
-        @modified_files_in_task << full_path unless @modified_files_in_task.include?(full_path)
+        record_file_before_change(args[:path]) if args[:path]
       end
     end
   end

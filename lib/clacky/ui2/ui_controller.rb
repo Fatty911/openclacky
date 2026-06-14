@@ -149,7 +149,8 @@ module Clacky
         update_sessionbar
       end
 
-      # Stop the UI controller
+      # Stop the UI controller. Keeps the screen by default so any final
+      # output (e.g. the "clacky -a <id>" resume hint) survives in scrollback.
       def stop(clear_screen: false)
         @running = false
         @layout.cleanup_screen(clear_screen: clear_screen)
@@ -1524,41 +1525,52 @@ module Clacky
       # @return [Integer, nil] Selected task ID or nil if cancelled
       public def show_time_machine_menu(history)
         modal = Components::ModalComponent.new
-        
+
+        active_index = nil
+
         # Build menu choices from history
-        choices = history.map do |task|
-          # Build visual indicator
-          indicator = if task[:status] == :current
-            "→ "  # Current task
-          elsif task[:status] == :future
-            "↯ "  # Future task (after undo)
+        choices = history.each_with_index.map do |task, idx|
+          # Status marker. The cursor itself draws a "→", so use distinct
+          # glyphs here to avoid visual collision:
+          #   ● current   · on-path history   ✗ undone/abandoned branch
+          marker = case task[:status]
+          when :current
+            active_index = idx
+            "● "
+          when :undone
+            "✗ "
           else
-            "  "  # Past task
+            "· "
           end
-          
-          # Add branch indicator
-          indicator += "⎇ " if task[:has_branches]
-          
+
+          # Branch indicator
+          marker += "⎇ " if task[:has_branches]
+
           # Truncate summary to fit on screen
           max_summary_length = 60
           summary = task[:summary]
           if summary.length > max_summary_length
             summary = summary[0...max_summary_length] + "..."
           end
-          
+
+          label = "#{marker}Task #{task[:task_id]}: #{summary}"
+          label += "  (undone)" if task[:status] == :undone
+
           {
-            name: "#{indicator}Task #{task[:task_id]}: #{summary}",
-            value: task[:task_id]
+            name: label,
+            value: task[:task_id],
+            dim: task[:status] == :undone
           }
         end
-        
-        # Show modal
+
+        # Show modal, landing the cursor on the currently-active task.
         result = modal.show(
           title: "Time Machine - Select Task to Navigate",
           choices: choices,
+          initial_index: active_index,
           on_close: -> { @layout.rerender_all }
         )
-        
+
         result # Return selected task_id or nil
       end
       

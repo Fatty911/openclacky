@@ -136,6 +136,7 @@ require_relative "clacky/agent"
 require_relative "clacky/server/session_registry"
 require_relative "clacky/server/web_ui_controller"
 require_relative "clacky/server/browser_manager"
+require_relative "clacky/server/backup_manager"
 require_relative "clacky/cli"
 
 # Runtime patch layer: load user/AI patches from ~/.clacky/patches/ after all

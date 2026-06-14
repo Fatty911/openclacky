@@ -32,7 +32,7 @@ module Clacky
         #                              Should return { success: true } or { success: false, error: "message" }
         # @param on_close [Proc, nil] Optional callback to execute when modal closes (e.g., to re-render screen)
         # @return [Hash, nil] Hash of field values or selected value, or nil if cancelled
-        def show(title:, fields: nil, choices: nil, validator: nil, on_close: nil)
+        def show(title:, fields: nil, choices: nil, validator: nil, on_close: nil, initial_index: nil)
           @title = title
           @mode = choices ? :menu : :form
           @fields = fields || []
@@ -41,9 +41,15 @@ module Clacky
           @error_message = nil
           @selected_index = 0
           
-          # For menu mode, find first non-disabled choice
+          # For menu mode, default to first non-disabled choice, unless the
+          # caller pinned an initial cursor position (e.g. Time Machine wants
+          # the cursor to land on the currently-active task).
           if @mode == :menu
-            @selected_index = @choices.index { |c| !c[:disabled] } || 0
+            if initial_index && @choices[initial_index] && !@choices[initial_index][:disabled]
+              @selected_index = initial_index
+            else
+              @selected_index = @choices.index { |c| !c[:disabled] } || 0
+            end
           end
 
           # Adjust height based on mode
@@ -376,7 +382,12 @@ module Clacky
             text = @pastel.dim(choice_text)
           elsif is_selected
             marker = @pastel.bright_cyan("→ ")
-            text = @pastel.bright_white(choice_text)
+            text = choice[:dim] ? @pastel.dim(choice_text) : @pastel.bright_white(choice_text)
+          elsif choice[:dim]
+            # Undone / abandoned-branch task: keep it visually de-emphasized
+            # even when not under the cursor.
+            marker = "  "
+            text = @pastel.dim(choice_text)
           else
             marker = "  "
             text = @pastel.white(choice_text)

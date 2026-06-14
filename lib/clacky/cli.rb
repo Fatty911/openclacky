@@ -892,10 +892,11 @@ module Clacky
               ui_controller.append_output("")
             end
 
-            # Stop UI and exit
+            # Stop UI and exit. Each UI decides whether to clear the screen on
+            # exit (UI2 keeps it so the resume hint survives; Rich clears).
             shutting_down = true
             idle_timer.shutdown
-            ui_controller.stop(clear_screen: true)
+            ui_controller.stop
             exit(0)
           end
 
@@ -948,7 +949,7 @@ module Clacky
           when "/exit", "/quit"
             shutting_down = true
             idle_timer.shutdown
-            ui_controller.stop(clear_screen: true)
+            ui_controller.stop
             exit(0)
           when "/help"
             sleep 0.1

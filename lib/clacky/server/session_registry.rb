@@ -470,7 +470,7 @@ module Clacky
           working_dir:     agent.working_dir,
           status:          session[:status],
           created_at:      agent.created_at,
-          updated_at:      session[:updated_at].iso8601,
+          updated_at:      session[:updated_at]&.iso8601 || agent.created_at,
           total_tasks:     agent.total_tasks || 0,
           total_cost:      agent.total_cost  || 0.0,
           cost_source:     agent.cost_source.to_s,

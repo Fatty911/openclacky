@@ -4,6 +4,7 @@ require "json"
 require "fileutils"
 require "securerandom"
 require "open3"
+require "set"
 
 module Clacky
   class SessionManager
@@ -413,5 +414,41 @@ module Clacky
     rescue JSON::ParserError, Errno::ENOENT
       nil
     end
+
+    # Remove Time Machine snapshots that no longer belong to any known session.
+    # Snapshots are keyed by full session_id; session files are named by the
+    # 8-char id prefix, so a snapshot dir is an orphan when its prefix matches
+    # no active or trashed session file. Returns the count of removed dirs.
+    def self.cleanup_orphan_snapshots(sessions_dir: SESSIONS_DIR, snapshots_root: nil)
+      snapshots_root ||= File.join(Dir.home, ".clacky", "snapshots")
+      return 0 unless Dir.exist?(snapshots_root)
+
+      require_relative "utils/trash_directory"
+      known = _session_id_prefixes(File.join(sessions_dir, "*.json"))
+      trash_dir = Clacky::TrashDirectory.sessions_trash_dir
+      known += _session_id_prefixes(File.join(trash_dir, "*.json")) if Dir.exist?(trash_dir)
+      known = known.to_set
+
+      removed = 0
+      Dir.children(snapshots_root).each do |name|
+        dir = File.join(snapshots_root, name)
+        next unless File.directory?(dir)
+        next if known.include?(name[0, 8])
+
+        FileUtils.rm_rf(dir)
+        removed += 1
+      end
+      removed
+    end
+
+    # Session filenames look like "<datetime>-<8hexid>.json"; pull out the
+    # trailing 8-char id prefix, which matches a snapshot dir's name prefix.
+    def self._session_id_prefixes(glob)
+      Dir.glob(glob).filter_map do |p|
+        m = File.basename(p, ".json").match(/-([0-9a-f]{8})\z/)
+        m && m[1]
+      end
+    end
+    private_class_method :_session_id_prefixes
   end
 end

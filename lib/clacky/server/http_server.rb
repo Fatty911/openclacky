@@ -367,6 +367,17 @@ module Clacky
         @scheduler.start
         puts "   Scheduler: #{@scheduler.schedules.size} task(s) loaded"
 
+        # Reclaim orphaned Time Machine snapshots (sessions deleted earlier
+        # without snapshot cleanup). Runs off-thread so startup stays fast.
+        Thread.new do
+          begin
+            n = Clacky::SessionManager.cleanup_orphan_snapshots
+            puts "   Snapshots: reclaimed #{n} orphan dir(s)" if n.positive?
+          rescue StandardError => e
+            Clacky::Logger.error("snapshot_cleanup_error", error: e)
+          end
+        end
+
         # Start IM channel adapters (non-blocking — each platform runs in its own thread)
         @channel_manager.start
 
@@ -412,6 +423,9 @@ module Clacky
           # with modalities:["image"]); end-to-end latency is commonly
           # 20-60s and can exceed 2 minutes for or-gpt-image-2 under load.
           300
+        elsif path.start_with?("/api/backup/download") || path == "/api/backup/run"
+          # Building a tar.gz of ~/.clacky (with session history) can take a while.
+          120
         else
           10
         end
@@ -456,6 +470,10 @@ module Clacky
         when ["POST",   "/api/browser/configure"]  then api_browser_configure(req, res)
         when ["POST",   "/api/browser/reload"]    then api_browser_reload(res)
         when ["POST",   "/api/browser/toggle"]    then api_browser_toggle(res)
+        when ["GET",    "/api/backup/status"]     then api_backup_status(res)
+        when ["POST",   "/api/backup/run"]        then api_backup_run(res)
+        when ["GET",    "/api/backup/download"]   then api_backup_download(res)
+        when ["PATCH",  "/api/backup/config"]     then api_backup_config(req, res)
         when ["POST",   "/api/telemetry"]        then api_telemetry(req, res)
         when ["POST",   "/api/onboard/complete"]  then api_onboard_complete(req, res)
         when ["POST",   "/api/onboard/skip-soul"] then api_onboard_skip_soul(req, res)
@@ -945,6 +963,52 @@ module Clacky
       def api_browser_toggle(res)
         enabled = @browser_manager.toggle
         json_response(res, 200, { ok: true, enabled: enabled })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # GET /api/backup/status
+      def api_backup_status(res)
+        json_response(res, 200, BackupManager.status)
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # POST /api/backup/run — run a backup immediately.
+      def api_backup_run(res)
+        result = BackupManager.run!
+        json_response(res, 200, { ok: true, archive: File.basename(result[:archive]),
+                                  size: result[:size], dest_dir: result[:dest_dir],
+                                  status: BackupManager.status })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # GET /api/backup/download — build a one-off archive and stream it
+      # directly to the browser. Not written to dest_dir nor recorded.
+      def api_backup_download(res)
+        result = BackupManager.build_download!
+        res.status                = 200
+        res["Content-Type"]       = "application/gzip"
+        res["Content-Disposition"] = %(attachment; filename="#{result[:filename]}")
+        res["Cache-Control"]      = "no-store"
+        res.body                  = File.binread(result[:path])
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      ensure
+        FileUtils.rm_f(result[:path]) if result && result[:path]
+      end
+      # Body: { enabled?, cron?, dest_dir?, keep?, include_sessions? }
+      def api_backup_config(req, res)
+        body = parse_json_body(req) || {}
+        cfg = BackupManager.update_config(
+          enabled:          body.key?("enabled") ? body["enabled"] : nil,
+          cron:             body["cron"],
+          dest_dir:         body.key?("dest_dir") ? body["dest_dir"] : nil,
+          keep:             body["keep"],
+          include_sessions: body.key?("include_sessions") ? body["include_sessions"] : nil
+        )
+        json_response(res, 200, { ok: true, config: cfg, status: BackupManager.status })
       rescue StandardError => e
         json_response(res, 500, { ok: false, error: e.message })
       end

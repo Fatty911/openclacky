@@ -3947,6 +3947,38 @@ body {
   line-height: 1.5;
   margin: 0;
 }
+
+/* ── Backup section ── */
+.backup-option,
+.backup-auto-label {
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.backup-option {
+  margin: 0.75rem 0;
+}
+.backup-auto-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin: 0.75rem 0;
+  flex-wrap: wrap;
+}
+.backup-auto-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+.backup-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  flex-wrap: wrap;
+}
+
 .settings-network-url {
   display: flex;
   flex-direction: column;
