@@ -7834,6 +7834,33 @@ body.setup-mode[data-theme="dark"] {
   border-radius: 8px;
 }
 
+/* ── Channel sections (connected / unconfigured grouping) ────────────────── */
+.channel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.channel-section-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-tertiary);
+  padding: 0 0.25rem 0.25rem;
+}
+
+/* Custom dev card */
+.channel-card-custom-dev {
+  border: 1px dashed var(--color-border-primary);
+  background: var(--color-bg-tertiary);
+}
+
+.channel-logo-custom {
+  background: linear-gradient(135deg, var(--color-accent-primary), #7c3aed);
+  color: #fff;
+}
+
 /* ── Version badge (inline in Settings row, right-aligned) ──────────────── */
 
 /* Settings button stretches to fill width; version badge pushes to the right */
