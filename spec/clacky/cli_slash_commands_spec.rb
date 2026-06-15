@@ -160,4 +160,12 @@ RSpec.describe Clacky::CLI, "UI2 slash commands" do
       send_input("/config")
     end
   end
+
+  # ── /model ───────────────────────────────────────────────────────────────────
+  describe "/model" do
+    it "delegates to handle_model_command" do
+      expect(cli).to receive(:handle_model_command).with(ui_controller, agent_config, agent, anything)
+      send_input("/model")
+    end
+  end
 end

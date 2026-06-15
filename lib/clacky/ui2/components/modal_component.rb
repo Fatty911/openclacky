@@ -32,7 +32,11 @@ module Clacky
         #                              Should return { success: true } or { success: false, error: "message" }
         # @param on_close [Proc, nil] Optional callback to execute when modal closes (e.g., to re-render screen)
         # @return [Hash, nil] Hash of field values or selected value, or nil if cancelled
-        def show(title:, fields: nil, choices: nil, validator: nil, on_close: nil, initial_index: nil)
+        # @param nav_keys [Boolean] when true, → on an expandable choice returns
+        #   { nav: :expand, value: } and ←/Esc returns { nav: :back }, letting the
+        #   caller drive multi-page (drawer) navigation within one modal flow.
+        # @param instructions [String, nil] override the bottom hint line.
+        def show(title:, fields: nil, choices: nil, validator: nil, on_close: nil, initial_index: nil, nav_keys: false, instructions: nil)
           @title = title
           @mode = choices ? :menu : :form
           @fields = fields || []
@@ -40,6 +44,8 @@ module Clacky
           @values = {}
           @error_message = nil
           @selected_index = 0
+          @nav_keys = nav_keys
+          @instructions = instructions
           
           # For menu mode, default to first non-disabled choice, unless the
           # caller pinned an initial cursor position (e.g. Time Machine wants
@@ -114,13 +120,23 @@ module Clacky
             when "\e"  # Escape sequence
               seq = STDIN.read_nonblock(2) rescue ''
               if seq.empty?
-                # Just Esc key - cancel
+                # Just Esc key. With nav_keys, Esc means "back" (the caller
+                # decides whether that's go-to-parent or cancel); otherwise cancel.
                 print "\e[?25l"
-                return nil
+                return @nav_keys ? { nav: :back } : nil
               elsif seq == '[A'  # Up arrow
                 move_menu_selection(-1)
               elsif seq == '[B'  # Down arrow
                 move_menu_selection(1)
+              elsif seq == '[C' && @nav_keys  # Right arrow - expand
+                selected = @choices[@selected_index]
+                if selected && !selected[:disabled] && selected[:expandable]
+                  print "\e[?25l"
+                  return { nav: :expand, value: selected[:value] }
+                end
+              elsif seq == '[D' && @nav_keys  # Left arrow - back
+                print "\e[?25l"
+                return { nav: :back }
               end
             when "\u0003"  # Ctrl+C
               print "\e[?25l"
@@ -405,7 +421,7 @@ module Clacky
 
         # Draw menu instructions
         private def draw_menu_instructions(row, col)
-          instructions = "↑↓/jk: Navigate • Enter: Select • Esc/q: Cancel"
+          instructions = @instructions || "↑↓/jk: Navigate • Enter: Select • Esc/q: Cancel"
           padding = (@width - instructions.length - 2) / 2
           remaining = @width - padding - instructions.length - 2
           

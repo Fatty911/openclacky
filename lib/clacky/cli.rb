@@ -290,6 +290,54 @@ module Clacky
         ui_controller.append_output("")
       end
 
+      # Handle the `/model` slash command — a quick model-card switcher.
+      #
+      # This is the lightweight counterpart to /config: it only lets the user
+      # pick an already-configured model and switches to it (no add/edit/delete).
+      # Switching goes through the unified Agent#switch_model_by_id path and
+      # also updates the global default so the choice sticks across launches,
+      # matching /config's :switch behavior.
+      private def handle_model_command(ui_controller, agent_config, agent, session_manager = nil)
+        config = agent_config
+
+        if config.models.empty?
+          ui_controller.show_error("No models configured. Run /config to add one.")
+          return
+        end
+
+        # Resolve a card's provider sub-models so the picker can offer them in
+        # the card's sub-model drawer.
+        submodels_for = lambda do |model|
+          base_url = model["base_url"]
+          provider_id = base_url && Clacky::Providers.find_by_base_url(base_url)
+          provider_id ? Clacky::Providers.models(provider_id) : []
+        end
+
+        result = ui_controller.show_model_switch_modal(config, submodels_for)
+        return if result.nil?
+
+        target_id = result[:model_id]
+        sub_model = result[:model_name]
+
+        agent.switch_model_by_id(target_id)
+        config.set_default_model_by_id(target_id)
+        config.save
+
+        # Pin (or clear) the per-session sub-model overlay for the chosen card.
+        agent.set_session_sub_model(sub_model)
+
+        # The overlay lives in the session file (not config.yml), so persist it
+        # now — otherwise it would be lost if the user quits before the next task.
+        session_manager&.save(agent.to_session_data)
+
+        ui_controller.config[:model] = config.model_name
+        ui_controller.update_sessionbar(
+          tasks: agent.total_tasks,
+          cost: agent.total_cost
+        )
+        ui_controller.show_success("Switched to model: #{config.model_name}")
+      end
+
       private def handle_time_machine_command(ui_controller, agent, session_manager)
         # Get task history from agent
         history = agent.get_task_history(limit: 10)
@@ -913,6 +961,9 @@ module Clacky
           case input.downcase.strip
           when "/config"
             handle_config_command(ui_controller, agent_config, agent)
+            next
+          when "/model"
+            handle_model_command(ui_controller, agent_config, agent, session_manager)
             next
           when "/undo"
             handle_time_machine_command(ui_controller, agent, session_manager)

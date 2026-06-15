@@ -960,6 +960,8 @@ module Clacky
           separator,
           "",
           theme.format_text("Commands:", :info),
+          "  #{theme.format_text("/model", :success)}       - Quickly switch the current model",
+          "  #{theme.format_text("/config", :success)}      - Configure models, API keys, settings",
           "  #{theme.format_text("/clear", :success)}       - Clear output and restart session",
           "  #{theme.format_text("/exit", :success)}        - Exit application",
           "",
@@ -1518,6 +1520,123 @@ module Clacky
             return nil
           end
         end
+      end
+
+      # Quick model switcher — lists configured model cards and returns the
+      # picked card's stable id. Unlike show_config_modal this never mutates
+      # config; it's a pure picker. All side effects live in the CLI layer.
+      # @return [Hash, nil] { model_id: <id> } or nil if cancelled / no models
+      # Two-level drawer picker for /model.
+      #
+      # Level 1 (card list): Enter selects a card and uses its default model
+      # (clearing any sub-model overlay); → opens that card's sub-model drawer
+      # (only for cards whose provider exposes >= 2 sub-models, marked "›").
+      #
+      # Level 2 (sub-model list): Enter pins the chosen sub-model (or Default);
+      # ← / Esc returns to the card list.
+      #
+      # @param current_config [AgentConfig]
+      # @param submodels_for [Proc] called with a card hash, returns its provider
+      #   sub-model names (or [] if none / single).
+      # @return [Hash, nil] { model_id:, model_name: } where model_name is the
+      #   chosen sub-model (nil = the card's own default), or nil if cancelled.
+      public def show_model_switch_modal(current_config, submodels_for)
+        return nil if current_config.models.empty?
+
+        on_close = -> { @layout.rerender_all }
+
+        loop do
+          card = show_model_card_level(current_config, submodels_for, on_close)
+          return nil if card.nil?
+
+          # Plain card pick (Enter): use the card default, clear overlay.
+          return { model_id: card[:model_id], model_name: nil } unless card[:expand]
+
+          # → opened the drawer: let the user pick a sub-model for this card.
+          model = current_config.models.find { |m| m["id"] == card[:model_id] }
+          drawer = {
+            model_id: card[:model_id],
+            card_model: card[:card_model],
+            submodels: submodels_for.call(model) || [],
+            current_overlay: current_config.session_model_overlay_name
+          }
+          sub = show_model_submodel_level(drawer, on_close)
+          next if sub == :back  # ← / Esc: back to the card list
+
+          return { model_id: card[:model_id], model_name: sub }
+        end
+      end
+
+      # Level 1: card list. Returns { model_id:, expand: bool } on Enter/→,
+      # or nil if cancelled.
+      private def show_model_card_level(current_config, submodels_for, on_close)
+        current_overlay = current_config.session_model_overlay_name
+
+        choices = current_config.models.each_with_index.map do |model, idx|
+          is_current = (idx == current_config.current_model_index)
+          card_model = model["model"] || "unnamed"
+          type_badge = case model["type"]
+                       when "default" then " [default]"
+                       when "lite" then " [lite]"
+                       else ""
+                       end
+          expandable = (submodels_for.call(model) || []).length >= 2
+
+          marker = is_current ? "● " : "  "
+          arrow = expandable ? "  ›" : ""
+          {
+            name: "#{marker}#{card_model}#{type_badge}#{arrow}",
+            value: { model_id: model["id"], card_model: card_model },
+            expandable: expandable
+          }
+        end
+
+        result = Components::ModalComponent.new.show(
+          title: "Switch Model",
+          choices: choices,
+          nav_keys: true,
+          instructions: "↑↓ move • Enter select • → submodels • Esc cancel",
+          on_close: on_close
+        )
+
+        return nil if result.nil? || (result.is_a?(Hash) && result[:nav] == :back)
+
+        if result.is_a?(Hash) && result[:nav] == :expand
+          { model_id: result[:value][:model_id], card_model: result[:value][:card_model], expand: true }
+        else
+          { model_id: result[:model_id], card_model: result[:card_model], expand: false }
+        end
+      end
+
+      # Level 2: sub-model list for one card. Returns the chosen sub-model name,
+      # nil (the card default), or :back to return to the card list.
+      private def show_model_submodel_level(card, on_close)
+        submodels = card[:submodels]
+        current = card[:current_overlay]
+        card_model = card[:card_model]
+
+        choices = [{
+          name: "#{current.nil? ? '● ' : '  '}Default (#{card_model})",
+          value: { model_name: nil }
+        }]
+        submodels.each do |name|
+          choices << {
+            name: "#{name == current ? '● ' : '  '}#{name}",
+            value: { model_name: name }
+          }
+        end
+
+        result = Components::ModalComponent.new.show(
+          title: card_model,
+          choices: choices,
+          nav_keys: true,
+          instructions: "↑↓ move • Enter select • ←/Esc back",
+          on_close: on_close
+        )
+
+        return :back if result.nil? || (result.is_a?(Hash) && result[:nav] == :back)
+
+        result[:model_name]
       end
 
       # Show time machine menu for task undo/redo
