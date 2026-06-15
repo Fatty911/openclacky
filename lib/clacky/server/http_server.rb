@@ -556,6 +556,8 @@ module Clacky
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/skills$})
             session_id = path.sub("/api/sessions/", "").sub("/skills", "")
             api_session_skills(session_id, res)
+          elsif method == "GET" && path == "/api/dirs"
+            api_browse_dirs(req, res)
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/files$})
             session_id = path.sub("/api/sessions/", "").sub("/files", "")
             api_session_files(session_id, req, res)
@@ -3265,6 +3267,7 @@ module Clacky
         query = URI.decode_www_form(req.query_string.to_s).to_h
         rel = query["path"].to_s
         absolute_mode = query["absolute"] == "true"
+        show_hidden = query["show_hidden"] == "true"
 
         # Absolute mode: allow browsing outside working directory (e.g., root "/")
         if absolute_mode
@@ -3284,7 +3287,9 @@ module Clacky
         end
 
         return json_response(res, 404, { error: "Directory not found" }) unless Dir.exist?(target)
-        entries = Dir.children(target).reject { |name| IGNORED_FILE_ENTRIES.include?(name) }
+        entries = Dir.children(target).reject do |name|
+          IGNORED_FILE_ENTRIES.include?(name) || (!show_hidden && name.start_with?("."))
+        end
 
         items = entries.filter_map do |name|
           full = File.join(target, name)
@@ -3308,6 +3313,45 @@ module Clacky
       rescue StandardError => e
         json_response(res, 500, { error: e.message })
       end
+
+      # GET /api/dirs?path=<absolute-or-~-path>
+      # Session-independent directory browser used by the New Session modal,
+      # where no session (and thus no working_dir) exists yet. Always operates
+      # in absolute mode and lists directories only.
+      def api_browse_dirs(req, res)
+        query = URI.decode_www_form(req.query_string.to_s).to_h
+        rel   = query["path"].to_s.strip
+        show_hidden = query["show_hidden"] == "true"
+        rel   = Dir.home if rel.empty?
+        target = File.expand_path(rel.start_with?("~") ? rel.sub(/\A~/, Dir.home) : rel)
+
+        # The requested directory may not exist yet (e.g. the default
+        # ~/clacky_workspace before any session created it). Instead of 404,
+        # walk up to the nearest existing ancestor so the picker stays usable.
+        until Dir.exist?(target)
+          parent = File.dirname(target)
+          break if parent == target
+          target = parent
+        end
+        return json_response(res, 404, { error: "Directory not found" }) unless Dir.exist?(target)
+
+        entries = Dir.children(target).reject do |name|
+          IGNORED_FILE_ENTRIES.include?(name) || (!show_hidden && name.start_with?("."))
+        end
+        items = entries.filter_map do |name|
+          full = File.join(target, name)
+          next unless File.directory?(full) && File.exist?(full)
+          { name: name, path: full, type: "dir" }
+        rescue StandardError
+          nil
+        end
+        items.sort_by! { |it| it[:name].downcase }
+
+        json_response(res, 200, { root: target, path: target, parent: File.dirname(target), home: Dir.home, entries: items })
+      rescue StandardError => e
+        json_response(res, 500, { error: e.message })
+      end
+
       # Body: { enabled: true/false }
       def api_toggle_skill(name, req, res)
         body    = parse_json_body(req)
