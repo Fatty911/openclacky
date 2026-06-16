@@ -1578,7 +1578,7 @@ module Clacky
 
       image = data_url ? { data_url: data_url } : { path: path }
 
-      @ui&.show_progress("OCR...", progress_type: "thinking", phase: "active")
+      @ui&.show_progress("Reading image…", progress_type: "vision", phase: "active")
       begin
         Clacky::Vision::Resolver.new(ocr_entry).describe(image)
       ensure
