@@ -1,6 +1,6 @@
 ---
 name: media-gen
-description: 'Generate images, videos, and audio (text-to-speech) inside the current task. Use this skill whenever the user asks to create, generate, or produce a picture / image / illustration / cover / poster / icon / artwork, OR a video / clip / animation, OR speech / voiceover / narration / TTS / audio — including phrases like 生成图片, 画一张, 做封面, 来张配图, generate image, make a picture, draw, create artwork, design a cover, 生成视频, 做个视频, 来段视频, generate video, make a video, create a clip, text-to-video, 朗读, 配音, 旁白, 文字转语音, 生成语音, generate speech, text to speech, voiceover, narrate. Also use when building documents (slides, PPT, posters, marketing pages, README hero shots) where an image is needed inline. Routes calls through the local Clacky HTTP server, which uses the user-configured `type=image` / `type=video` / `type=audio` model — you do NOT need to know which provider; the server handles it.'
+description: 'Generate images, videos, or audio (text-to-speech) in the current task. Use whenever the user asks to create/generate/produce a picture / image / illustration / cover / poster / icon / artwork, a video / clip / animation, or speech / voiceover / narration / TTS — e.g. 生成图片, 画一张, 做封面, 配图, generate image, make a picture, draw, design a cover, 生成视频, 做个视频, text-to-video, 朗读, 配音, 旁白, 文字转语音, generate speech, voiceover. Also use when a document (slides, poster, README hero) needs an inline image.'
 disable-model-invocation: false
 user-invocable: true
 always-show: true
@@ -27,13 +27,29 @@ curl -s http://${CLACKY_SERVER_HOST}:${CLACKY_SERVER_PORT}/api/media/types
 
 If the response shows `image.configured = false`, stop and tell the user:
 
-> 还没有配置生图模型。请打开 Clacky 设置页 → 添加模型 → 类型选 `image`（推荐 `or-gemini-3-pro-image` 或 `or-gpt-image-1`）。配好后再让我生图。
+> 还没有配置生图模型。请打开设置页 → 添加模型 → 类型选 `image`（走 openclacky 官方网关时推荐 `or-gemini-3-pro-image` 或 `or-gpt-image-2`）。配好后再让我生图。
 
 Do NOT try to fall back to `terminal` + a hand-written `curl https://api.openai.com/...` — that bypasses the user's configured backend and won't be billed correctly.
 
+**You do NOT configure models — the user does, in the settings page.** Never
+edit the user's `config.yml` to add or change a model, and never invent a model
+name from memory (e.g. `or-gpt-5.4-image-2` does not exist). The real, current
+model is whatever `/api/media/types` reports under `image.model`. If you think a
+different model is needed, tell the user which one to set in the settings page —
+don't touch the config file yourself.
+
 ## Step 2 — Generate the image
 
-### ⚠️  Important: generation speed & concurrency
+### The model does NOT honor exact pixel sizes
+
+There is no `size` / `width` / `height` field — the only shape control is
+`aspect_ratio` (`landscape` / `square` / `portrait`), and even that is just a
+rough hint (ask for `576x96` and you may get `1408x768`). When the user needs an
+**exact pixel size, a grid, an icon at NxN, or a spritesheet**, generate first at
+whatever size the model gives, then resize / crop / tile to the exact pixels with
+ImageMagick (`magick`). Verify with `magick identify` before reporting done.
+
+### Important: generation speed & concurrency
 
 - **Image generation can be slow — up to 2 minutes per image depending on the model.** Before calling the API, warn the user that it may take a minute or two. The curl request blocks until the image is ready; do NOT run it in the background.
 - **One at a time only.** Never generate multiple images concurrently (e.g. by running several `curl` commands simultaneously or in a script loop). Each call consumes significant server-side resources, and parallel requests will almost certainly cause timeouts. If the user wants several images, generate them **sequentially**, one after another.
@@ -46,6 +62,10 @@ curl -s -X POST http://${CLACKY_SERVER_HOST}:${CLACKY_SERVER_PORT}/api/media/ima
     "aspect_ratio": "landscape"
   }'
 ```
+
+- The terminal blocks multi-line commands — write the request into a `.sh` file and run it, don't paste a multi-line `curl`.
+- If a call fails with `400 / INVALID_ARGUMENT`, drop the `aspect_ratio` field and retry once before reporting the error.
+- If a call fails with `unknown image model` (400), the configured model name isn't recognized by its backend — tell the user to fix the model name in the settings page; do NOT guess another name and retry.
 
 ### Request fields
 
@@ -143,7 +163,7 @@ POST http://${CLACKY_SERVER_HOST}:${CLACKY_SERVER_PORT}/api/media/video
 Check `GET /api/media/types` first — if `video.configured = false`, tell the
 user to add a `type=video` model in settings before generating.
 
-### ⚠️ Video is slow and expensive
+### Video is slow and expensive
 
 - **A single clip can take 1–3 minutes (sometimes longer).** Warn the user
   before calling, and run the curl in the foreground — it blocks until the
