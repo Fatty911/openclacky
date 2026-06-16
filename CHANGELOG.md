@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-17
+
+### Added
+- Complete Web UI overhaul: skeleton loading, task card layout, new session dialog, onboarding flow, inline image preview, and redesigned session bar
+- Multimedia generation: video generation, text-to-speech (TTS), and OCR via vision models
+- IM channel management UI — bind and unbind channels directly in Web UI
+- `/model` command in terminal UI for quick model switching
+- AI-key device login flow
+- Session sharing and backup support
+
+### Improved
+- Terminal output auto-collapses on completion with normalized result display
+- Billing page mobile layout, global tooltip, and logo animation polish
+- Live chat history API replaces group buffer polling for real-time sync
+
+### Fixed
+- Sidebar scrolling back to active session on content updates
+- Channel key missing arbitration on session restore
+- Race condition in model switching
+- Channel keys and info out of sync on bind/unbind
+
 ## [1.2.18] - 2026-06-13
 
 ### Added
