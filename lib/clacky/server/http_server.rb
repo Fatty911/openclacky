@@ -457,7 +457,7 @@ module Clacky
         when ["GET",    "/api/cron-tasks"]    then api_list_cron_tasks(res)
         when ["POST",   "/api/cron-tasks"]    then api_create_cron_task(req, res)
         when ["GET",    "/api/skills"]         then api_list_skills(res)
-        when ["GET",    "/api/config"]        then api_get_config(res)
+        when ["GET",    "/api/config"]        then api_get_config(req, res)
         when ["GET",    "/api/config/settings"]  then api_get_settings(res)
         when ["GET",    "/api/exchange-rate"]    then api_exchange_rate(req, res)
         when ["PATCH",  "/api/config/settings"]  then api_update_settings(req, res)
@@ -4200,7 +4200,7 @@ module Clacky
       # ── Config API ────────────────────────────────────────────────────────────
 
       # GET /api/config — return current model configurations
-      def api_get_config(res)
+      def api_get_config(req, res)
         models = @agent_config.models.map.with_index do |m, i|
           {
             id:               m["id"],   # Stable runtime id — use this for switching
@@ -4213,17 +4213,56 @@ module Clacky
           }
         end
         # Filter out auto-injected models (lite, derived media) AND media
-        # entries (image/video/audio) — those are managed via the dedicated
+        # entries (image/video/audio/ocr) — those are managed via the dedicated
         # media-config UI, not the chat-model card list.
         models.reject! do |m|
           raw = @agent_config.models[m[:index]]
-          raw["auto_injected"] || Clacky::Providers::MEDIA_KINDS.include?(raw["type"].to_s)
+          raw["auto_injected"] ||
+            Clacky::Providers::MEDIA_KINDS.include?(raw["type"].to_s) ||
+            raw["type"].to_s == "ocr"
         end
+        # Capabilities follow the model the *session* is actually running on
+        # (it may differ from the global default after a per-session switch).
+        query   = URI.decode_www_form(req.query_string.to_s).to_h
+        cfg     = config_for_session(query["session_id"]) || @agent_config
         json_response(res, 200, {
           models: models,
           current_index: @agent_config.current_model_index,
-          current_id: @agent_config.current_model&.dig("id")
+          current_id: @agent_config.current_model&.dig("id"),
+          media_capabilities: media_capabilities_payload(cfg)
         })
+      end
+
+      # Resolve the AgentConfig for a given session, falling back to nil when
+      # the session isn't live so callers can use the global config instead.
+      def config_for_session(session_id)
+        return nil if session_id.to_s.strip.empty?
+        return nil unless @registry.ensure(session_id)
+
+        agent = nil
+        @registry.with_session(session_id) { |s| agent = s[:agent] }
+        agent&.config
+      end
+
+      # Capability summary for the model dropdown's footer.
+      #   vision — true when the current default model handles images itself
+      #            OR a vision sidecar is configured (ocr_state covers both).
+      #   image/video/audio — true only when a dedicated sidecar is configured;
+      #            the chat model can never generate these on its own.
+      def media_capabilities_payload(cfg = @agent_config)
+        ocr = cfg.ocr_state
+        out = {
+          vision: {
+            configured: !!ocr["configured"],
+            primary:    !!ocr["primary"],
+            model:      ocr["model"]
+          }
+        }
+        Clacky::Providers::MEDIA_KINDS.each do |t|
+          state = cfg.media_state(t)
+          out[t] = { configured: !!state["configured"], model: state["model"] }
+        end
+        out
       end
 
       # GET /api/config/settings — return advanced settings

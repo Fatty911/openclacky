@@ -825,6 +825,24 @@ module Clacky
       available = default_provider ? Clacky::Providers.ocr_models(default_provider) : []
 
       if raw_entry && raw_entry["disabled"]
+        # A disabled OCR sidecar only means "no separate vision model"; it must
+        # not override the fact that the chat model may handle images itself.
+        anchor = current_model || default
+        anchor_provider = anchor && Clacky::Providers.resolve_provider(
+          base_url: anchor["base_url"], api_key: anchor["api_key"]
+        )
+        if anchor && anchor_provider &&
+           Clacky::Providers.supports?(anchor_provider, :vision, model_name: anchor["model"])
+          return {
+            "configured" => true,
+            "source"     => "primary",
+            "model"      => anchor["model"],
+            "base_url"   => anchor["base_url"],
+            "provider"   => anchor_provider,
+            "primary"    => true,
+            "available"  => available
+          }
+        end
         return {
           "configured" => false,
           "source"     => "off",
