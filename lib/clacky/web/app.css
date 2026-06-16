@@ -6460,8 +6460,7 @@ body.setup-mode[data-theme="dark"] {
   inset: 0;
   z-index: 500;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   overflow-y: auto;
   /* Reserve scrollbar space always so card doesn't shift when scrollbar appears */
   scrollbar-gutter: stable;
@@ -6490,6 +6489,8 @@ body.setup-mode[data-theme="dark"] {
   min-height: 21.25rem;
   /* Dropdown must overflow the card boundary */
   overflow: visible;
+  margin: auto;
+  flex-shrink: 0;
 }
 [data-theme="dark"] #setup-card {
   box-shadow: 0 4px 40px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.3);
@@ -6780,6 +6781,89 @@ body.setup-mode[data-theme="dark"] {
   text-decoration: none;
   margin-right: 0.75rem;
 }
+.setup-device-success {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-accent-primary);
+  border-radius: 12px;
+  padding: 1rem 1.125rem 1.125rem;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent-primary) 8%, transparent), transparent);
+}
+.setup-device-success-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.setup-device-success-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent-primary);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.setup-device-success-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+.setup-device-success-lead {
+  font-size: 0.8125rem;
+  color: var(--color-text-primary);
+  margin: 0 0 0.625rem;
+  line-height: 1.5;
+}
+.setup-device-success-points {
+  list-style: none;
+  margin: 0 0 0.875rem;
+  padding: 0;
+}
+.setup-device-success-points li {
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.25rem;
+}
+.setup-device-success-points li strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+.setup-device-success-points li.setup-device-success-note {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  background: color-mix(in srgb, var(--color-accent-primary) 6%, transparent);
+  border-radius: 6px;
+  color: var(--color-text-secondary);
+  font-style: normal;
+}
+#setup-btn-device-continue {
+  display: block;
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.875rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  background: var(--color-accent-primary);
+  color: #fff;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.06), 0 6px 16px color-mix(in srgb, var(--color-accent-primary) 28%, transparent);
+  transition: background .15s, transform .08s, box-shadow .15s;
+}
+#setup-btn-device-continue:hover {
+  background: color-mix(in srgb, var(--color-accent-primary) 88%, black);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 8px 24px color-mix(in srgb, var(--color-accent-primary) 36%, transparent);
+}
+#setup-btn-device-continue:active {
+  transform: translateY(1px);
+}
 #setup-device-error {
   margin-top: 0.5rem;
 }
@@ -6850,8 +6934,7 @@ body.setup-mode[data-theme="dark"] {
 #onboard-panel {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   overflow-y: auto;
   padding: 2.5rem 1.25rem;
 }
@@ -6863,6 +6946,7 @@ body.setup-mode[data-theme="dark"] {
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+  margin: auto;
 }
 
 .onboard-logo {

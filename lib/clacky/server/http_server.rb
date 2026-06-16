@@ -902,7 +902,11 @@ module Clacky
             base_url: data["base_url"],
             model:    data["default_model"]
           )
-          json_response(res, 200, { ok: true, status: "approved" })
+          json_response(res, 200, {
+            ok:            true,
+            status:        "approved",
+            default_model: data["default_model"]
+          })
         elsif status == "pending"
           json_response(res, 200, { ok: true, status: "pending" })
         else
