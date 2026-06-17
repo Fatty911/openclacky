@@ -59,7 +59,7 @@ module Clacky
           "or-gemini-3-1-flash-image"  => "Nano Banana 2",
           "or-gpt-image-2"             => "GPT Image 2"
         },
-        "default_image_model" => "or-gpt-image-2",
+        "default_image_model" => "or-gemini-3-1-flash-image",
         # Video generation models served by the openclacky gateway, which
         # routes them to Vertex AI Veo (async predictLongRunning under the
         # hood; the gateway hides the polling and returns the MP4 inline).
