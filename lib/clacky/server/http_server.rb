@@ -627,6 +627,9 @@ module Clacky
           elsif method == "PATCH" && path.match?(%r{^/api/skills/[^/]+/toggle$})
             name = URI.decode_www_form_component(path.sub("/api/skills/", "").sub("/toggle", ""))
             api_toggle_skill(name, req, res)
+          elsif method == "DELETE" && path.match?(%r{^/api/skills/[^/]+$})
+            name = URI.decode_www_form_component(path.sub("/api/skills/", ""))
+            api_delete_skill(name, res)
           elsif method == "POST" && path.match?(%r{^/api/brand/skills/[^/]+/install$})
             slug = URI.decode_www_form_component(path.sub("/api/brand/skills/", "").sub("/install", ""))
             api_brand_skill_install(slug, req, res)
@@ -3461,6 +3464,14 @@ module Clacky
         json_response(res, 200, { ok: true, name: skill.identifier, enabled: !skill.disabled? })
       rescue Clacky::AgentError => e
         json_response(res, 422, { error: e.message })
+      end
+
+      private def api_delete_skill(name, res)
+        skill = @skill_loader[name]
+        return json_response(res, 404, { error: "Skill not found: #{name}" }) unless skill
+
+        FileUtils.rm_rf(skill.directory)
+        json_response(res, 200, { ok: true })
       end
 
       # POST /api/my-skills/:name/publish
