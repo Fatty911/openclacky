@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-06-17
+
+### Added
+- Delete skills directly from the Web UI
+
+### Improved
+- Sidebar is now draggable to resize, with width persisted across sessions
+- Sidebar scrollbar only appears while scrolling for a cleaner look
+- Billing page UI polish and mobile adaptation
+- Default openclacky image model switched to Nano Banana 2
+
+### Fixed
+- Onboarding device-login window no longer gets blocked as a popup
+
 ## [1.3.0] - 2026-06-17
 
 ### Added
