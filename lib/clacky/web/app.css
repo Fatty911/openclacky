@@ -6541,6 +6541,24 @@ body {
   background: var(--color-success-bg);
 }
 
+/* ── Delete button ────────────────────────────────────────────────────────── */
+.btn-skill-delete {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.btn-skill-delete:hover {
+  color: var(--color-error, #c0392b);
+  border-color: var(--color-error-border, #f5c6c6);
+  background: var(--color-error-bg, #fff0f0);
+}
+
 /* ── Skills sidebar section ──────────────────────────────────────────────── */
 #skill-list-items { padding: 0 0.5rem 0.5rem; display: flex; flex-direction: column; gap: 2px; }
 
