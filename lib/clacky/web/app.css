@@ -578,6 +578,22 @@ body {
   flex-direction: column;
   min-height: 0;
   padding: 0 6px 8px;
+  margin-right: -1px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+#sidebar-list.is-scrolling {
+  scrollbar-color: var(--color-border-secondary) transparent;
+}
+#sidebar-list::-webkit-scrollbar { width: 4px; }
+#sidebar-list::-webkit-scrollbar-track { background: transparent; }
+#sidebar-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.4s;
+}
+#sidebar-list.is-scrolling::-webkit-scrollbar-thumb {
+  background: var(--color-border-secondary);
 }
 #session-list { padding: 4px 0 0; min-height: 6.75rem; }
 
@@ -597,10 +613,6 @@ body {
   top: 0;
   background: var(--color-bg-primary);
   z-index: 10;
-}
-.sidebar-divider:first-child {
-  margin-top: 0;
-  padding-top: 18px;
 }
 .sidebar-divider span {
   white-space: nowrap;
