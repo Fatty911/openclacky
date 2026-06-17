@@ -555,10 +555,6 @@ body {
   cursor: col-resize;
   z-index: 10;
 }
-#sidebar-resize-handle:hover,
-#sidebar-resize-handle.active {
-  background: color-mix(in srgb, var(--color-accent-primary) 30%, transparent);
-}
 #sidebar:has(#sidebar-resize-handle.active) {
   transition: background-color var(--transition-base);
 }
