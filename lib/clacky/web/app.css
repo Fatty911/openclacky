@@ -530,8 +530,9 @@ body {
 /* The sidebar sits on the outer frame (bg-primary) so it's visibly a layer
    BEHIND the chat surface (bg-secondary). Subtle right border separates them. */
 #sidebar {
-  width: 15rem;
-  min-width: 15rem;
+  --sidebar-width: 15rem;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
   background: var(--color-bg-primary);
   border-right: 1px solid var(--color-border-primary);
   display: flex;
@@ -540,9 +541,26 @@ body {
   height: 100%;
   flex-shrink: 0;
   margin-left: 0;
+  position: relative;
 }
 #sidebar.hidden {
-  margin-left: -15rem;
+  margin-left: calc(-1 * var(--sidebar-width));
+}
+#sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 10;
+}
+#sidebar-resize-handle:hover,
+#sidebar-resize-handle.active {
+  background: color-mix(in srgb, var(--color-accent-primary) 30%, transparent);
+}
+#sidebar:has(#sidebar-resize-handle.active) {
+  transition: background-color var(--transition-base);
 }
 #sidebar-header {
   display: flex;
@@ -11180,6 +11198,7 @@ body.setup-mode[data-theme="dark"] {
     transform: translateX(-100%);
     margin-left: 0 !important;
   }
+  #sidebar-resize-handle { display: none; }
 
   /* Overlay backdrop */
   #sidebar-overlay {
