@@ -630,6 +630,9 @@ module Clacky
           elsif method == "DELETE" && path.match?(%r{^/api/skills/[^/]+$})
             name = URI.decode_www_form_component(path.sub("/api/skills/", ""))
             api_delete_skill(name, res)
+          elsif method == "DELETE" && path.match?(%r{^/api/brand/skills/[^/]+$})
+            slug = URI.decode_www_form_component(path.sub("/api/brand/skills/", ""))
+            api_delete_brand_skill(slug, res)
           elsif method == "POST" && path.match?(%r{^/api/brand/skills/[^/]+/install$})
             slug = URI.decode_www_form_component(path.sub("/api/brand/skills/", "").sub("/install", ""))
             api_brand_skill_install(slug, req, res)
@@ -1939,6 +1942,23 @@ module Clacky
           json_response(res, 422, { ok: false, error: result[:error] })
         end
       rescue StandardError, ScriptError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # DELETE /api/brand/skills/:slug
+      # Uninstalls a brand skill by removing its files and metadata.
+      def api_delete_brand_skill(slug, res)
+        brand = Clacky::BrandConfig.load
+        installed = brand.installed_brand_skills
+        unless installed.key?(slug)
+          json_response(res, 404, { ok: false, error: "Brand skill '#{slug}' is not installed" })
+          return
+        end
+
+        brand.delete_brand_skill!(slug)
+        @skill_loader = Clacky::SkillLoader.new(working_dir: nil, brand_config: brand)
+        json_response(res, 200, { ok: true })
+      rescue StandardError => e
         json_response(res, 500, { ok: false, error: e.message })
       end
 
