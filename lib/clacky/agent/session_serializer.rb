@@ -502,14 +502,24 @@ module Clacky
 
         case msg[:role].to_s
         when "assistant"
-          # Text content — prepend reasoning/thinking content wrapped in <think> tags
-          # so the Web UI renders it as a collapsible thinking block
-          text = extract_text_from_content(msg[:content]).to_s.strip
+          # Mirror the live guard at agent.rb (`if response[:content] && !response[:content].empty?`):
+          # only emit an assistant_message when the model produced actual content.
+          # Reasoning-only turns (empty content + reasoning_content + tool_calls)
+          # are silent in live mode; on replay they must stay silent too — otherwise
+          # a phantom <think>-only bubble splits consecutive tool_calls into separate
+          # UI groups, breaking the "N tool(s) used" collapse after refresh (C-5672).
+          raw_text  = extract_text_from_content(msg[:content]).to_s.strip
           reasoning = msg[:reasoning_content]
-          if reasoning && !reasoning.to_s.strip.empty?
-            text = "<think>\n#{reasoning}\n</think>\n#{text}"
+          unless raw_text.empty?
+            text = if reasoning && !reasoning.to_s.strip.empty?
+              # Prepend reasoning wrapped in <think> tags so the Web UI renders it
+              # as a collapsible thinking block.
+              "<think>\n#{reasoning}\n</think>\n#{raw_text}"
+            else
+              raw_text
+            end
+            ui.show_assistant_message(text, files: [])
           end
-          ui.show_assistant_message(text, files: []) unless text.empty?
 
           # Tool calls embedded in assistant message
           Array(msg[:tool_calls]).each do |tc|
