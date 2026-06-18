@@ -4671,14 +4671,15 @@ body {
 }
 .model-card-grid-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.375rem;
   margin-left: auto;
   justify-content: flex-end;
 }
 .model-card-grid-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-top: 0.25rem;
 }
 .model-card-grid-link {
@@ -11581,9 +11582,9 @@ body.setup-mode[data-theme="dark"] {
   }
 
   /* ── Billing / Trash / Creator pages ── */
-  #billing-body { padding: 1rem 1rem 5rem; }
-  #trash-body   { padding: 1rem 1rem 5rem; }
-  #creator-body { padding: 1rem 1rem 5rem; }
+  #billing-body { padding: 1rem 1rem 1rem; }
+  #trash-body   { padding: 1rem 1rem 1rem; }
+  #creator-body { padding: 1rem 1rem 1rem; }
 
   .billing-heatmap-row { grid-template-columns: 1fr; }
 
