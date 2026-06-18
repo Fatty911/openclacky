@@ -11442,7 +11442,7 @@ body.setup-mode[data-theme="dark"] {
     min-height: 0;
   }
   #skills-body {
-    padding: 1rem 1rem 5rem;
+    padding: 1rem 1rem 1rem;
     gap: 0.75rem;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;

@@ -2915,10 +2915,13 @@ module Clacky
           result = Utils::EnvironmentDetector.open_file(linux_path)
           return json_response(res, 501, { error: "unsupported OS" }) if result.nil?
           json_response(res, 200, { ok: true })
+        when "reveal"
+          Utils::EnvironmentDetector.reveal_file(linux_path)
+          json_response(res, 200, { ok: true })
         when "download"
           serve_file_download(res, linux_path)
         else
-          json_response(res, 400, { error: "invalid action. Must be 'open' or 'download'" })
+          json_response(res, 400, { error: "invalid action. Must be 'open', 'reveal' or 'download'" })
         end
       rescue => e
         json_response(res, 500, { ok: false, error: e.message })
