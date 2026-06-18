@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-06-18
+
+### Added
+- Right-click context menu on workspace file tree with "Reveal in Finder" support (macOS/Linux/WSL)
+- Resizable workspace panel with a drag handle
+- Expandable task prompt preview — click a task card to view the full prompt
+
+### Improved
+- Skill cards now show a delete button, with shimmer skeleton loading while fetching
+
+### Fixed
+- Every-N-hours cron schedule label now renders correctly (e.g. `0 */2 * * *`)
+- Billing sessions list now shows all rows instead of being clipped
+- Session replay skips reasoning-only assistant messages to match the live view
+- Set-as-default button in settings aligned to the footer row with the top-up link
+
 ## [1.3.1] - 2026-06-17
 
 ### Added
