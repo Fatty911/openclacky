@@ -576,6 +576,9 @@ module Clacky
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/messages$})
             session_id = path.sub("/api/sessions/", "").sub("/messages", "")
             api_session_messages(session_id, req, res)
+          elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+$})
+            session_id = path.sub("/api/sessions/", "")
+            api_get_session(session_id, res)
           elsif method == "PATCH" && path.match?(%r{^/api/sessions/[^/]+$})
             session_id = path.sub("/api/sessions/", "")
             api_rename_session(session_id, req, res)
@@ -681,6 +684,16 @@ module Clacky
         sessions = pinned_part + non_pinned_part
 
         json_response(res, 200, { sessions: sessions, has_more: has_more, cron_count: @registry.cron_count })
+      end
+
+      # GET /api/sessions/:id — fetch a single session by id (memory + disk merged).
+      # Used by the frontend Router when navigating to a session that isn't in
+      # the paged sidebar list (search results, URL deep links, share links,
+      # browser back/forward, external notifications, etc.).
+      def api_get_session(session_id, res)
+        row = @registry.snapshot(session_id)
+        return json_response(res, 404, { error: "Session not found" }) unless row
+        json_response(res, 200, { session: row })
       end
 
       def api_create_session(req, res)
