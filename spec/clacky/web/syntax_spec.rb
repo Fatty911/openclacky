@@ -142,7 +142,7 @@ RSpec.describe "Web asset syntax" do
   # ─── JavaScript ────────────────────────────────────────────────────────────
 
   describe "JavaScript syntax" do
-    let(:js_files) { Dir[File.join(web_dir, "*.js")] }
+    let(:js_files) { Dir[File.join(web_dir, "**", "*.js")].reject { |f| f.include?("/vendor/") } }
 
     it "finds JavaScript files to test" do
       expect(js_files).not_to be_empty, "No .js files found in #{web_dir}"

@@ -25,6 +25,7 @@
   <!-- ── TOP HEADER ──────────────────────────────────────────────────────── -->
   <header id="top-header">
     <div id="header-left">
+      <span id="ext-slot-header-left" data-slot="header.left"></span>
       <button id="btn-toggle-sidebar" class="sidebar-toggle-btn" title="Toggle sidebar">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
           <rect width="18" height="18" x="3" y="3" rx="2"/>
@@ -51,6 +52,7 @@
       </button>
     </div>
     <div id="header-right">
+      <span id="ext-slot-header-right" data-slot="header.right"></span>
       <button id="share-toggle-header" class="theme-toggle-btn" data-i18n-title="share.tooltip" title="Share">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
           <circle cx="18" cy="5" r="3"/>
@@ -269,10 +271,14 @@
           </div>
         </div>
       </div>
+
+      <!-- Extension nav slot: extensions add custom menu items / entry points to whole new workspaces here. -->
+      <div id="ext-slot-sidebar-nav" data-slot="sidebar.nav"></div>
     </div>
 
     <!-- Bottom Settings -->
     <div id="sidebar-footer">
+      <span id="ext-slot-sidebar-footer" data-slot="sidebar.footer"></span>
       <div class="sidebar-nav-row">
         <button id="btn-settings" class="sidebar-nav-btn" title="Settings">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -296,6 +302,9 @@
 
   <!-- ── MAIN ─────────────────────────────────────────────────────────── -->
   <main id="main">
+
+    <!-- Extension workspace slot: extensions mount entirely new custom panels here. -->
+    <div id="ext-slot-main-workspace" data-slot="main.workspace"></div>
 
 
     <!-- Onboard panel: kept as empty shell (soul_setup auto-launches /onboard session) -->
@@ -797,9 +806,14 @@
         <button class="settings-tab" data-tab="ui" data-i18n="settings.tabs.ui">UI</button>
         <button class="settings-tab" data-tab="general" data-i18n="settings.tabs.general">General</button>
         <button class="settings-tab" data-tab="about" data-i18n="settings.tabs.about">About</button>
+        <!-- Extension tab slot: extensions add custom settings tabs here (button needs data-tab="<id>"). -->
+        <span id="ext-slot-settings-tabs" data-slot="settings.tabs"></span>
       </div>
 
       <div id="settings-body">
+        <!-- Extension tab-content slot: matching panels go here (root needs data-tab-content="<id>"). -->
+        <span id="ext-slot-settings-body" data-slot="settings.body"></span>
+
 
         <!-- ══ Tab: Models ══ -->
         <div class="settings-tab-content active" data-tab-content="models">
@@ -1446,6 +1460,7 @@
 <script src="/vendor/katex/katex.min.js"></script>
 <script src="/vendor/katex/auto-render.min.js"></script>
 <script src="/utils.js"></script>
+<script src="/core/ext.js"></script>
 <script src="/i18n.js"></script>
 <script src="/auth.js"></script>
 <script src="/theme.js"></script>
@@ -1453,26 +1468,52 @@
 <script src="/ws.js"></script>
 <script src="/ws-dispatcher.js"></script>
 <script src="/sessions.js"></script>
-<script src="/workspace.js"></script>
+<script src="/features/workspace/store.js"></script>
+<script src="/features/workspace/view.js"></script>
 <script src="/datepicker.js"></script>
-<script src="/tasks.js"></script>
+<script src="/features/tasks/store.js"></script>
+<script src="/features/tasks/view.js"></script>
+<script src="/features/skills/store.js"></script>
+<script src="/features/skills/view.js"></script>
+<script src="/features/channels/store.js"></script>
+<script src="/features/channels/view.js"></script>
 <script src="/skills.js"></script>
-<script src="/channels.js"></script>
-<script src="/mcp.js"></script>
-<script src="/backup.js"></script>
-<script src="/model-tester.js"></script>
+<script src="/features/mcp/store.js"></script>
+<script src="/features/mcp/view.js"></script>
+<script src="/features/backup/store.js"></script>
+<script src="/features/backup/view.js"></script>
+<script src="/features/model-tester/store.js"></script>
+<script src="/features/model-tester/view.js"></script>
 <script src="/settings.js"></script>
-<script src="/billing.js"></script>
+<script src="/features/billing/store.js"></script>
+<script src="/features/billing/view.js"></script>
 <script src="/onboard.js"></script>
-<script src="/brand.js"></script>
-<script src="/creator.js"></script>
-<script src="/trash.js"></script>
-<script src="/profile.js"></script>
-<script src="/version.js"></script>
+<script src="/features/brand/store.js"></script>
+<script src="/features/brand/view.js"></script>
+<script src="/features/creator/store.js"></script>
+<script src="/features/creator/view.js"></script>
+<script src="/features/trash/store.js"></script>
+<script src="/features/trash/view.js"></script>
+<script src="/features/profile/store.js"></script>
+<script src="/features/profile/view.js"></script>
+<script src="/features/version/store.js"></script>
+<script src="/features/version/view.js"></script>
 <script src="/sidebar.js"></script>
 <script src="/vendor/qrcode/qrcode.min.js"></script>
-<script src="/share.js"></script>
+<script src="/features/share/store.js"></script>
+<script src="/features/share/view.js"></script>
 <script src="/app.js"></script>
-<script>Tooltip.init();</script>
+{{EXT_SCRIPTS}}
+<script>
+  Tooltip.init();
+  // Render every host-declared slot once extensions have registered.
+  // Each [data-slot] element is a named injection point; renderSlot isolates
+  // failing extensions so a crash degrades only that slot.
+  (function () {
+    document.querySelectorAll("[data-slot]").forEach(function (el) {
+      Clacky.ext.renderSlot(el.getAttribute("data-slot"), el, {});
+    });
+  })();
+</script>
 </body>
 </html>

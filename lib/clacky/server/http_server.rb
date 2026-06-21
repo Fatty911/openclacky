@@ -355,12 +355,17 @@ module Clacky
         server.mount_proc("/") do |req, res|
           if req.path == "/" || req.path == "/index.html"
             product_name = Clacky::BrandConfig.load.product_name || "OpenClacky"
-            html = File.read(index_html_path).gsub("{{BRAND_NAME}}", product_name)
+            pure         = req.query["pure"] == "true"
+            html = File.read(index_html_path)
+                       .gsub("{{BRAND_NAME}}", product_name)
+                       .gsub("{{EXT_SCRIPTS}}", pure ? "" : self.send(:webui_ext_script_tags))
             res.status                = 200
             res["Content-Type"]       = "text/html; charset=utf-8"
             res["Cache-Control"]      = "no-store"
             res["Pragma"]             = "no-cache"
             res.body                  = html
+          elsif req.path.start_with?("/webui_ext/")
+            self.send(:serve_webui_ext, req, res)
           else
             file_handler.service(req, res)
             res["Cache-Control"] = "no-store"
@@ -957,8 +962,60 @@ module Clacky
         @agent_config.save
       end
 
+      # Absolute path to the user's WebUI extension directory.
+      WEBUI_EXT_ROOT = File.expand_path("~/.clacky/webui_ext")
 
-      # GET /api/browser/status
+      # Build <script> tags for every JS file under ~/.clacky/webui_ext/.
+      # Each file is wrapped via Clacky.ext._withExtension so its registrations
+      # are attributed to it and a load-time throw is contained. Returns "" when
+      # the directory is absent (the common case). Never raises.
+      private def webui_ext_script_tags
+        root = WEBUI_EXT_ROOT
+        return "" unless Dir.exist?(root)
+
+        files = Dir.glob(File.join(root, "**", "*.js")).sort
+        files.map do |abs|
+          rel = abs.delete_prefix(root + "/")
+          ext_id = rel.delete_suffix(".js")
+          src    = "/webui_ext/#{rel}"
+          # Bracket the extension's own <script> with begin/end markers so that
+          # registrations made during its synchronous evaluation are attributed
+          # to it (for crash attribution / disable). Synchronous src scripts run
+          # in document order, so the surrounding inline scripts run immediately
+          # before and after it.
+          "<script>Clacky.ext._extBegin(#{ext_id.to_json})</script>" \
+            "<script src=#{src.to_json} data-ext-id=#{ext_id.to_json}></script>" \
+            "<script>Clacky.ext._extEnd()</script>"
+        end.join("\n")
+      end
+
+      # Serve a static file from ~/.clacky/webui_ext/. Read-only, JS/CSS/HTML only,
+      # with strict path containment so a crafted path cannot escape the dir.
+      private def serve_webui_ext(req, res)
+        rel = req.path.delete_prefix("/webui_ext/")
+        abs = File.expand_path(File.join(WEBUI_EXT_ROOT, rel))
+
+        unless abs.start_with?(WEBUI_EXT_ROOT + File::SEPARATOR) && File.file?(abs)
+          res.status = 404
+          res.body   = "not found"
+          return
+        end
+
+        ext = File.extname(abs)
+        ctype = { ".js" => "application/javascript", ".css" => "text/css",
+                  ".html" => "text/html; charset=utf-8" }[ext]
+        unless ctype
+          res.status = 415
+          res.body   = "unsupported media type"
+          return
+        end
+
+        res.status           = 200
+        res["Content-Type"]  = ctype
+        res["Cache-Control"] = "no-store"
+        res["Pragma"]        = "no-cache"
+        res.body             = File.read(abs)
+      end
       # Returns real daemon liveness from BrowserManager (not just yml read).
       def api_browser_status(res)
         json_response(res, 200, @browser_manager.status)
