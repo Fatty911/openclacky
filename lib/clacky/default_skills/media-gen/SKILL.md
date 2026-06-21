@@ -1,6 +1,6 @@
 ---
 name: media-gen
-description: 'Generate images, videos, or audio (text-to-speech) in the current task. Use whenever the user asks to create/generate/produce a picture / image / illustration / cover / poster / icon / artwork, a video / clip / animation, or speech / voiceover / narration / TTS — e.g. 生成图片, 画一张, 做封面, 配图, generate image, make a picture, draw, design a cover, 生成视频, 做个视频, text-to-video, 朗读, 配音, 旁白, 文字转语音, generate speech, voiceover. Also use when a document (slides, poster, README hero) needs an inline image.'
+description: 'Generate images, videos, or audio (text-to-speech) in the current task. Use whenever the user asks to create/generate/produce a picture / image / illustration / cover / poster / icon / artwork, a video / clip / animation, or speech / voiceover / narration / TTS — e.g. generate image, draw, design a cover, text-to-video, generate speech; 画一张, 配图, 做个视频, 配音, 文字转语音. Also use when a document (slides, poster, README hero) needs an inline image.'
 disable-model-invocation: false
 user-invocable: true
 always-show: true

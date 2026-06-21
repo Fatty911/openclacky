@@ -1,6 +1,6 @@
 ---
 name: cron-task-creator
-description: 'Create, manage, and run scheduled automated tasks (cron jobs) in Clacky. Use this skill whenever the user wants to create a new automated task or cron job, set up recurring automation, schedule something to run daily/weekly/hourly, view all scheduled tasks, edit an existing task prompt or cron schedule, enable or disable a task, delete a task, check task run history or logs, or run a task immediately via the WebUI. Trigger on phrases like 定时任务, 自动化任务, 每天自动, 创建任务, cron, 定时执行, scheduled task, automate this, run every day, set up automation, edit my task, list my tasks, what tasks do I have, disable task, run task now, task history, etc.'
+description: 'Create, manage, and run scheduled automated tasks (cron jobs) in Clacky. Use this skill whenever the user wants to create a new automated task or cron job, set up recurring automation, schedule something to run daily/weekly/hourly, view all scheduled tasks, edit an existing task prompt or cron schedule, enable or disable a task, delete a task, check task run history or logs, or run a task immediately via the WebUI. Trigger on phrases like cron, scheduled task, run every day, automate this; 定时任务, 每天自动, 定时执行.'
 disable-model-invocation: false
 user-invocable: true
 ---
