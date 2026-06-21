@@ -24,5 +24,8 @@ VOLUME ["/root/.clacky"]
 
 EXPOSE 7070
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:7070/health || exit 1
+
 ENTRYPOINT ["openclacky"]
 CMD ["server", "--host", "0.0.0.0"]

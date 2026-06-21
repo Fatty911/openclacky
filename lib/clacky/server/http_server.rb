@@ -333,6 +333,14 @@ module Clacky
         server.mount("/api", servlet_class)
         server.mount("/ws",  servlet_class)
 
+        # Health check endpoint — no auth, minimal overhead.
+        # Docker / orchestrators can probe this to decide container health.
+        server.mount_proc("/health") do |_req, res|
+          res.status          = 200
+          res["Content-Type"] = "application/json"
+          res.body            = '{"status":"ok"}'
+        end
+
         # Mount static file handler for the entire web directory.
         # Use mount_proc so we can inject no-cache headers on every response,
         # preventing stale JS/CSS from being served after a gem update.

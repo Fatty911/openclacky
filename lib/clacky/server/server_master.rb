@@ -36,6 +36,7 @@ module Clacky
         @worker_pid = nil
         @restart_requested = false
         @shutdown_requested = false
+        @shutdown_signal = nil
       end
 
       def run
@@ -68,9 +69,9 @@ module Clacky
 
         # 3. Signal handlers
         Signal.trap("USR1") { @restart_requested  = true }
-        Signal.trap("TERM") { @shutdown_requested = true }
-        Signal.trap("INT")  { @shutdown_requested = true }
-        Signal.trap("HUP")  { @shutdown_requested = true }
+        Signal.trap("TERM") { @shutdown_signal = "TERM"; @shutdown_requested = true }
+        Signal.trap("INT")  { @shutdown_signal = "INT";  @shutdown_requested = true }
+        Signal.trap("HUP")  { @shutdown_signal = "HUP";  @shutdown_requested = true }
 
         # 4. Spawn first worker
         @worker_pid = spawn_worker
@@ -184,7 +185,8 @@ module Clacky
       end
 
       def shutdown
-        Clacky::Logger.info("[Master] Shutting down (worker PID=#{@worker_pid})...")
+        reason = @shutdown_signal ? "signal=SIG#{@shutdown_signal}" : "signal=none"
+        Clacky::Logger.info("[Master] Shutting down (worker PID=#{@worker_pid}) #{reason}...")
         if @worker_pid
           begin
             # TERM the entire worker process group so grandchildren (node MCP, etc.)
