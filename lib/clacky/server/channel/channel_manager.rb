@@ -43,6 +43,8 @@ module Clacky
         @running           = false
         @mutex             = Mutex.new
         @session_counters  = Hash.new(0)
+        @dedup_mutex       = Mutex.new
+        @last_message      = {}  # channel_key => [digest, monotonic_time]
       end
 
       # Start all enabled adapters in background threads. Non-blocking.
@@ -241,6 +243,16 @@ module Clacky
         text  = event[:text]&.strip
         files = event[:files] || []
         return if (text.nil? || text.empty?) && files.empty?
+
+        # Safety net against adapter-side message storms: drop an identical message
+        # repeated on the same channel within a short window. A real user never
+        # sends the exact same text+files twice within DEDUP_WINDOW seconds, but a
+        # misbehaving adapter (or noisy IM system messages) can, which would
+        # otherwise spin the interrupt→restart loop below indefinitely.
+        if duplicate_message?(event, text, files)
+          Clacky::Logger.info("[ChannelManager] Dropping duplicate message on #{channel_key(event)} within #{DEDUP_WINDOW}s")
+          return
+        end
 
         # Handle built-in commands
         if text&.match?(KNOWN_COMMAND) || text&.match?(/\A([\?h]|help)\z/i)
@@ -747,6 +759,20 @@ module Clacky
           "#{i + 1}. `#{s[:id][0, 8]}` #{name} (#{s[:status]}) #{time}"
         end
         adapter.send_text(chat_id, "Recent sessions:\n#{lines.join("\n")}\n\nUse `/bind <n>` to switch.")
+      end
+
+      DEDUP_WINDOW = 2.0  # seconds; identical messages on the same channel within this window are dropped
+
+      private def duplicate_message?(event, text, files)
+        key    = channel_key(event)
+        digest = [text, files.map { |f| f.is_a?(Hash) ? f[:name] : f.to_s }].hash
+        now    = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        @dedup_mutex.synchronize do
+          prev_digest, prev_time = @last_message[key]
+          @last_message[key] = [digest, now]
+          !prev_digest.nil? && prev_digest == digest && (now - prev_time) < DEDUP_WINDOW
+        end
       end
 
       def channel_key(event)
