@@ -1958,13 +1958,25 @@ body {
 .session-aside-resize {
   position: absolute;
   top: 0;
-  left: -3px;
+  left: -6px;
   bottom: 0;
-  width: 6px;
+  width: 12px;
   cursor: col-resize;
   z-index: 10;
+  background: transparent;
 }
-.session-aside-resize:hover { background: var(--color-accent-soft); }
+.session-aside-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 1px;
+  background: transparent;
+  transition: background-color var(--transition-base);
+}
+.session-aside-resize:hover::after,
+.session-aside-resize.active::after { background: var(--color-accent-primary); }
 
 .session-aside-collapse {
   position: absolute;

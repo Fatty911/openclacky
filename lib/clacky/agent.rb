@@ -1371,6 +1371,17 @@ module Clacky
       cloned_messages = deep_clone(@history.to_a)
       subagent.instance_variable_set(:@history, MessageHistory.new(cloned_messages))
 
+      # The cloned history carries per-message task_id tags. Without the parent's
+      # Time Machine task state the subagent's @active_task_id stays 0, so
+      # active_task_chain collapses to {0} and active_messages filters out every
+      # message tagged task_id > 0 — silently shrinking the context and busting
+      # prompt caching. Carry the task state alongside @history so the subagent
+      # sees the same chain (and cache prefix) as the parent.
+      subagent.instance_variable_set(:@task_parents, deep_clone(@task_parents))
+      subagent.instance_variable_set(:@current_task_id, @current_task_id)
+      subagent.instance_variable_set(:@active_task_id, @active_task_id)
+      subagent.instance_variable_set(:@task_meta, deep_clone(@task_meta))
+
       # Append system prompt suffix as user message (for cache reuse)
       if system_prompt_suffix
         subagent_history = subagent.history
