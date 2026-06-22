@@ -5098,6 +5098,10 @@ module Clacky
             conn.send_json(type: "error", message: "Session not found: #{session_id}")
           end
 
+        when "edit_message"
+          session_id = msg["session_id"] || conn.session_id
+          handle_edit_message(session_id, msg["content"].to_s, msg["created_at"].to_s)
+
         when "message"
           session_id = msg["session_id"] || conn.session_id
           # Merge legacy images array into files as { data_url:, name:, mime_type: } entries
@@ -5147,6 +5151,20 @@ module Clacky
       end
 
       # ── Session actions ───────────────────────────────────────────────────────
+
+      def handle_edit_message(session_id, content, created_at)
+        return unless @registry.exist?(session_id)
+
+        agent = nil
+        @registry.with_session(session_id) { |s| agent = s[:agent] }
+        return unless agent
+
+        if agent.history.respond_to?(:truncate_from_created_at) && !created_at.to_s.empty?
+          agent.history.truncate_from_created_at(created_at)
+        end
+
+        handle_user_message(session_id, content)
+      end
 
       def handle_user_message(session_id, content, files = [])
         return unless @registry.exist?(session_id)
