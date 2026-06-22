@@ -48,10 +48,25 @@ module Clacky
         end
         @latest_latency = last_assistant_with_latency&.dig(:latency)
 
-        # Restore Time Machine state
-        @task_parents = session_data.dig(:time_machine, :task_parents) || {}
-        @current_task_id = session_data.dig(:time_machine, :current_task_id) || 0
-        @active_task_id = session_data.dig(:time_machine, :active_task_id) || 0
+        # Restore Time Machine state. JSON.parse(symbolize_names:) turns the
+        # task_parents hash keys into symbols like :"1"; the runtime expects
+        # Integer keys/values, so coerce both ends back here.
+        raw_parents = session_data.dig(:time_machine, :task_parents) || {}
+        @task_parents = raw_parents.each_with_object({}) { |(k, v), h| h[k.to_s.to_i] = v.to_i }
+        @current_task_id = (session_data.dig(:time_machine, :current_task_id) || 0).to_i
+        @active_task_id = (session_data.dig(:time_machine, :active_task_id) || 0).to_i
+
+        raw_meta = session_data.dig(:time_machine, :task_meta) || {}
+        @task_meta = raw_meta.each_with_object({}) do |(k, v), h|
+          tid = k.to_s.to_i
+          attrs = v.is_a?(Hash) ? v : {}
+          h[tid] = {
+            title:      attrs[:title] || attrs["title"],
+            started_at: (attrs[:started_at] || attrs["started_at"])&.to_f,
+            ended_at:   (attrs[:ended_at]   || attrs["ended_at"])&.to_f,
+          }
+        end
+        backfill_task_meta_from_history!
 
         # Check if the session ended with an error.
         # We record the rollback intent here but do NOT truncate history immediately —
@@ -99,6 +114,34 @@ module Clacky
         refresh_system_prompt
       end
 
+      # Fill missing entries in @task_meta from @history (for sessions saved
+      # before task_meta existed, or for tasks whose meta was lost). The first
+      # real user message of each task supplies the title; created_at becomes
+      # started_at; the latest message in the task supplies ended_at. Tasks
+      # whose user turn has already been archived stay without a title and
+      # the UI falls back to "Task N".
+      private def backfill_task_meta_from_history!
+        @task_meta ||= {}
+        return if @current_task_id.to_i <= 0
+
+        @history.to_a.each do |m|
+          tid = m[:task_id]
+          next unless tid.is_a?(Integer) && tid > 0
+          next if m[:system_injected]
+
+          entry = (@task_meta[tid] ||= {})
+          if m[:role].to_s == "user" && (entry[:title].nil? || entry[:title].to_s.empty?)
+            text = extract_text_from_content(m[:content]).to_s.gsub(/\s+/, " ").strip
+            entry[:title] = text.length > 60 ? "#{text[0...57]}..." : text unless text.empty?
+          end
+          ts = m[:created_at]
+          next unless ts
+          entry[:started_at] ||= ts.to_f
+          cur_end = entry[:ended_at]
+          entry[:ended_at] = ts.to_f if cur_end.nil? || ts.to_f > cur_end
+        end
+      end
+
       private def persisted_card_field(key)
         card_id = @config.current_model_id
         return nil unless card_id
@@ -138,7 +181,8 @@ module Clacky
           time_machine: {  # Include Time Machine state
             task_parents: @task_parents || {},
             current_task_id: @current_task_id || 0,
-            active_task_id: @active_task_id || 0
+            active_task_id: @active_task_id || 0,
+            task_meta: @task_meta || {}
           },
           config: {
             # NOTE: api_key and other sensitive credentials are intentionally excluded

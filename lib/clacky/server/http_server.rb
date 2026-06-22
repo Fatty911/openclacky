@@ -16,6 +16,7 @@ require "timeout"
 require "yaml"
 require "date"
 require_relative "session_registry"
+require_relative "git_panel"
 require_relative "web_ui_controller"
 require_relative "scheduler"
 require_relative "../brand_config"
@@ -366,6 +367,10 @@ module Clacky
             res.body                  = html
           elsif req.path.start_with?("/webui_ext/")
             self.send(:serve_webui_ext, req, res)
+          elsif req.path.start_with?("/agent_ui/")
+            self.send(:serve_agent_ui, req, res)
+          elsif req.path.start_with?("/panel_ui/")
+            self.send(:serve_panel_ui, req, res)
           else
             file_handler.service(req, res)
             res["Cache-Control"] = "no-store"
@@ -578,6 +583,27 @@ module Clacky
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/skills$})
             session_id = path.sub("/api/sessions/", "").sub("/skills", "")
             api_session_skills(session_id, res)
+          elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/git/[a-z]+$})
+            session_id = path[%r{^/api/sessions/([^/]+)/git/}, 1]
+            action     = path[%r{/git/([a-z]+)$}, 1]
+            api_session_git(session_id, action, req, res)
+          elsif method == "POST" && path.match?(%r{^/api/sessions/[^/]+/git/commit$})
+            session_id = path[%r{^/api/sessions/([^/]+)/git/}, 1]
+            api_session_git_commit(session_id, req, res)
+          elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/time_machine$})
+            session_id = path.sub("/api/sessions/", "").sub("/time_machine", "")
+            api_session_time_machine(session_id, res)
+          elsif method == "POST" && path.match?(%r{^/api/sessions/[^/]+/time_machine/switch$})
+            session_id = path[%r{^/api/sessions/([^/]+)/time_machine/}, 1]
+            api_session_time_machine_switch(session_id, req, res)
+          elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/time_machine/\d+/diff$})
+            session_id = path[%r{^/api/sessions/([^/]+)/time_machine/}, 1]
+            task_id    = path[%r{/time_machine/(\d+)/diff$}, 1].to_i
+            api_session_time_machine_diff(session_id, task_id, req, res)
+          elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/time_machine/\d+/restore_preview$})
+            session_id = path[%r{^/api/sessions/([^/]+)/time_machine/}, 1]
+            task_id    = path[%r{/time_machine/(\d+)/restore_preview$}, 1].to_i
+            api_session_time_machine_restore_preview(session_id, task_id, res)
           elsif method == "GET" && path == "/api/dirs"
             api_browse_dirs(req, res)
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/files$})
@@ -965,25 +991,113 @@ module Clacky
       # Absolute path to the user's WebUI extension directory.
       WEBUI_EXT_ROOT = File.expand_path("~/.clacky/webui_ext")
 
-      # Build <script> tags for every JS file under ~/.clacky/webui_ext/.
-      # Each file is wrapped via Clacky.ext._withExtension so its registrations
-      # are attributed to it and a load-time throw is contained. Returns "" when
-      # the directory is absent (the common case). Never raises.
+      # Build the full <script> payload injected at {{EXT_SCRIPTS}}:
+      #   1. global extensions   — ~/.clacky/webui_ext/**/*.js  (all agents)
+      #   2. agent-scoped UI     — agents/<name>/webui/**/*.js   (data-agent)
+      #   3. official panels     — default_agents/_panels/<id>/**/*.js (data-panel)
+      # Prefixed with a registerPanelAgents() call so the client knows which
+      # agent profiles reference each official panel. Never raises.
       private def webui_ext_script_tags
-        root = WEBUI_EXT_ROOT
+        [
+          panel_agents_script,
+          global_ext_script_tags,
+          agent_webui_script_tags,
+          official_panel_script_tags,
+        ].reject(&:empty?).join("\n")
+      end
+
+      # Inline script registering the panel→agents map (which agent profiles
+      # reference each official panel, from their profile.yml `panels:`).
+      private def panel_agents_script
+        map = panel_agents_map
+        return "" if map.empty?
+
+        "<script>Clacky.ext.registerPanelAgents(#{map.to_json})</script>"
+      end
+
+      # { "git" => ["coding", ...], ... } — scan every agent profile.yml for a
+      # `panels:` list and invert it into panel → referencing agents.
+      private def panel_agents_map
+        result = Hash.new { |h, k| h[k] = [] }
+        agent_profile_dirs.each do |name, dir|
+          yml = File.join(dir, "profile.yml")
+          next unless File.file?(yml)
+
+          data = begin
+            YAML.safe_load(File.read(yml)) || {}
+          rescue StandardError
+            {}
+          end
+          Array(data["panels"]).each { |panel| result[panel.to_s] << name unless result[panel.to_s].include?(name) }
+        end
+        result
+      end
+
+      # { agent_name => resolved_dir } across built-in and user agent dirs,
+      # user dir winning on name collision (matches AgentProfile lookup order).
+      private def agent_profile_dirs
+        dirs = {}
+        [Clacky::AgentProfile::DEFAULT_AGENTS_DIR, Clacky::AgentProfile::USER_AGENTS_DIR].each do |root|
+          next unless Dir.exist?(root)
+
+          Dir.children(root).each do |name|
+            next if name.start_with?("_") # _panels and other non-agent dirs
+            full = File.join(root, name)
+            next unless File.directory?(full) && File.file?(File.join(full, "profile.yml"))
+
+            dirs[name] = full
+          end
+        end
+        dirs
+      end
+
+      # Global extensions — visible for all agents (unchanged legacy behavior).
+      private def global_ext_script_tags
+        ext_script_block(WEBUI_EXT_ROOT, "/webui_ext")
+      end
+
+      # Agent-scoped UI: agents/<name>/webui/**/*.js. Each script is tagged with
+      # its owning agent so the client only mounts it for that profile.
+      private def agent_webui_script_tags
+        agent_profile_dirs.filter_map do |name, dir|
+          webui = File.join(dir, "webui")
+          next unless Dir.exist?(webui)
+
+          ext_script_block(webui, "/agent_ui/#{name}", id_prefix: "agent/#{name}/", agents: [name])
+        end.reject(&:empty?).join("\n")
+      end
+
+      # Official panels: default_agents/_panels/<id>/**/*.js. Scope comes from
+      # the panel→agents map (registerPanelAgents), so a panel only mounts for
+      # agents whose profile.yml references it.
+      private def official_panel_script_tags
+        root = File.join(Clacky::AgentProfile::DEFAULT_AGENTS_DIR, "_panels")
         return "" unless Dir.exist?(root)
 
-        files = Dir.glob(File.join(root, "**", "*.js")).sort
-        files.map do |abs|
-          rel = abs.delete_prefix(root + "/")
-          ext_id = rel.delete_suffix(".js")
-          src    = "/webui_ext/#{rel}"
+        Dir.children(root).sort.filter_map do |panel|
+          dir = File.join(root, panel)
+          next unless File.directory?(dir)
+
+          ext_script_block(dir, "/panel_ui/#{panel}", id_prefix: "panel/#{panel}/", panel: panel)
+        end.reject(&:empty?).join("\n")
+      end
+
+      # Emit begin/script/end triples for every *.js under `root`, served from
+      # `url_base`. `agents`/`panel` carry agent-scoping to _extBegin so the
+      # client can decide visibility. Returns "" when the dir is absent.
+      private def ext_script_block(root, url_base, id_prefix: "", agents: nil, panel: nil)
+        return "" unless Dir.exist?(root)
+
+        Dir.glob(File.join(root, "**", "*.js")).sort.map do |abs|
+          rel    = abs.delete_prefix(root + "/")
+          ext_id = id_prefix + rel.delete_suffix(".js")
+          src    = "#{url_base}/#{rel}"
           # Bracket the extension's own <script> with begin/end markers so that
           # registrations made during its synchronous evaluation are attributed
           # to it (for crash attribution / disable). Synchronous src scripts run
           # in document order, so the surrounding inline scripts run immediately
           # before and after it.
-          "<script>Clacky.ext._extBegin(#{ext_id.to_json})</script>" \
+          "<script>Clacky.ext._extBegin(#{ext_id.to_json}, #{agents.to_json}, #{panel.to_json})</script>" \
             "<script src=#{src.to_json} data-ext-id=#{ext_id.to_json}></script>" \
             "<script>Clacky.ext._extEnd()</script>"
         end.join("\n")
@@ -1016,7 +1130,53 @@ module Clacky
         res["Pragma"]        = "no-cache"
         res.body             = File.read(abs)
       end
-      # Returns real daemon liveness from BrowserManager (not just yml read).
+
+      # Serve agents/<name>/webui/<file> from built-in or user agent dir.
+      # Path: /agent_ui/<name>/<rel>. User dir wins on name collision.
+      private def serve_agent_ui(req, res)
+        rest = req.path.delete_prefix("/agent_ui/")
+        name, _, rel = rest.partition("/")
+        dir = agent_profile_dirs[name]
+        return (res.status = 404; res.body = "not found") unless dir && !rel.empty?
+
+        serve_static_under(File.join(dir, "webui"), rel, res)
+      end
+
+      # Serve official panel assets: /panel_ui/<panel>/<rel>.
+      private def serve_panel_ui(req, res)
+        rest = req.path.delete_prefix("/panel_ui/")
+        panel, _, rel = rest.partition("/")
+        return (res.status = 404; res.body = "not found") if panel.empty? || rel.empty?
+
+        root = File.join(Clacky::AgentProfile::DEFAULT_AGENTS_DIR, "_panels", panel)
+        serve_static_under(root, rel, res)
+      end
+
+      # Read-only static serve of `rel` under `root`, JS/CSS/HTML only, with
+      # strict path containment so a crafted rel cannot escape `root`.
+      private def serve_static_under(root, rel, res)
+        root = File.expand_path(root)
+        abs  = File.expand_path(File.join(root, rel))
+        unless abs.start_with?(root + File::SEPARATOR) && File.file?(abs)
+          res.status = 404
+          res.body   = "not found"
+          return
+        end
+
+        ctype = { ".js" => "application/javascript", ".css" => "text/css",
+                  ".html" => "text/html; charset=utf-8" }[File.extname(abs)]
+        unless ctype
+          res.status = 415
+          res.body   = "unsupported media type"
+          return
+        end
+
+        res.status           = 200
+        res["Content-Type"]  = ctype
+        res["Cache-Control"] = "no-store"
+        res["Pragma"]        = "no-cache"
+        res.body             = File.read(abs)
+      end
       def api_browser_status(res)
         json_response(res, 200, @browser_manager.status)
       end
@@ -1131,7 +1291,9 @@ module Clacky
         result = Clacky::Media::Generator.new(@agent_config).generate_image(
           prompt: prompt,
           aspect_ratio: aspect_ratio,
-          output_dir: output_dir
+          output_dir: output_dir,
+          image: body["image"],
+          images: body["images"]
         )
         if result["success"]
           log_media_usage(result, prompt: prompt)
@@ -3434,7 +3596,147 @@ module Clacky
         json_response(res, 200, { skills: skill_data })
       end
 
-      # GET /api/sessions/:id/files?path=<relative dir>
+      # GET /api/sessions/:id/git/<action> — read-only git info for the session's
+      # working_dir. action ∈ status|diff|log|branches. diff accepts ?file=,
+      # log accepts ?limit=.
+      def api_session_git(session_id, action, req, res)
+        dir = git_session_dir(session_id, res)
+        return unless dir
+
+        unless Clacky::Server::GitPanel.repo?(dir)
+          return json_response(res, 200, { repo: false })
+        end
+
+        query = URI.decode_www_form(req.query_string.to_s).to_h
+        case action
+        when "status"
+          json_response(res, 200, { repo: true }.merge(Clacky::Server::GitPanel.status(dir)))
+        when "diff"
+          json_response(res, 200, { repo: true, diff: Clacky::Server::GitPanel.diff(dir, file: query["file"]) })
+        when "log"
+          json_response(res, 200, { repo: true, commits: Clacky::Server::GitPanel.log(dir, limit: query["limit"] || 50) })
+        when "branches"
+          json_response(res, 200, { repo: true, branches: Clacky::Server::GitPanel.branches(dir) })
+        else
+          json_response(res, 404, { error: "Unknown git action" })
+        end
+      end
+
+      # POST /api/sessions/:id/git/commit — body: { message:, files: [..] }.
+      def api_session_git_commit(session_id, req, res)
+        dir = git_session_dir(session_id, res)
+        return unless dir
+
+        unless Clacky::Server::GitPanel.repo?(dir)
+          return json_response(res, 400, { error: "Not a git repository" })
+        end
+
+        body = parse_json_body(req)
+        result = Clacky::Server::GitPanel.commit(dir, message: body["message"], files: body["files"])
+        if result[:ok]
+          json_response(res, 200, result)
+        else
+          json_response(res, 422, { error: result[:error] })
+        end
+      end
+
+      # GET /api/sessions/:id/time_machine — task history for the Time Machine
+      # panel. Mirrors the CLI menu: each entry carries id, summary, status
+      # (current/past/undone) and whether it branches.
+      def api_session_time_machine(session_id, res)
+        agent = time_machine_agent(session_id, res)
+        return unless agent
+
+        history = agent.get_task_history(limit: 20)
+        json_response(res, 200, { tasks: history })
+      end
+
+      # POST /api/sessions/:id/time_machine/switch — body: { task_id: }.
+      # Restores the working tree to the end-of-task state of task_id.
+      def api_session_time_machine_switch(session_id, req, res)
+        agent = time_machine_agent(session_id, res)
+        return unless agent
+
+        body = parse_json_body(req)
+        task_id = body["task_id"].to_i
+        result = agent.switch_to_task(task_id)
+        if result[:success]
+          @session_manager.save(agent.to_session_data(status: :success))
+          broadcast_session_update(session_id)
+          json_response(res, 200, { ok: true, message: result[:message], task_id: result[:task_id] })
+        else
+          json_response(res, 422, { ok: false, error: result[:message] })
+        end
+      end
+
+      # GET /api/sessions/:id/time_machine/:task_id/diff
+      # Without ?path: returns the file list this task touched.
+      # With ?path=<rel>: returns the unified diff of that file.
+      def api_session_time_machine_diff(session_id, task_id, req, res)
+        agent = time_machine_agent(session_id, res)
+        return unless agent
+
+        rel = req.query["path"].to_s
+        if rel.empty?
+          json_response(res, 200, { ok: true, task_id: task_id, files: agent.task_diff_files(task_id) })
+        else
+          diff = agent.task_file_diff(task_id, rel)
+          if diff.nil?
+            json_response(res, 404, { ok: false, error: "No diff for #{rel}" })
+          else
+            json_response(res, 200, { ok: true, task_id: task_id }.merge(diff))
+          end
+        end
+      end
+
+      # GET /api/sessions/:id/time_machine/:task_id/restore_preview
+      # Returns the file-level effect of switching back to this task without
+      # actually performing the switch. Lets the UI render an honest
+      # confirmation listing the files that would be overwritten/created/deleted.
+      def api_session_time_machine_restore_preview(session_id, task_id, res)
+        agent = time_machine_agent(session_id, res)
+        return unless agent
+
+        changes = agent.preview_restore_to_task(task_id)
+        json_response(res, 200, { ok: true, task_id: task_id, changes: changes })
+      end
+
+      # Resolve a session's agent for time-machine ops; writes the error
+      # response and returns nil on failure.
+      private def time_machine_agent(session_id, res)
+        unless @registry.ensure(session_id)
+          json_response(res, 404, { error: "Session not found" })
+          return nil
+        end
+        session = @registry.get(session_id)
+        agent   = session && session[:agent]
+        unless agent
+          json_response(res, 404, { error: "Session not found" })
+          return nil
+        end
+        agent
+      end
+
+      # Resolve a session's working_dir for git ops; writes the error response
+      # and returns nil on any failure.
+      private def git_session_dir(session_id, res)
+        unless @registry.ensure(session_id)
+          json_response(res, 404, { error: "Session not found" })
+          return nil
+        end
+        session = @registry.get(session_id)
+        agent   = session && session[:agent]
+        unless agent
+          json_response(res, 404, { error: "Session not found" })
+          return nil
+        end
+        dir = File.expand_path(agent.working_dir.to_s)
+        unless Dir.exist?(dir)
+          json_response(res, 404, { error: "Working directory not found" })
+          return nil
+        end
+        dir
+      end
       # Lists one directory level inside the session's working_dir (lazy, per-layer).
       # Path traversal outside working_dir is rejected. Noisy dirs are hidden.
       IGNORED_FILE_ENTRIES = %w[.git .svn .hg node_modules .DS_Store .bundle vendor/bundle tmp .sass-cache].freeze

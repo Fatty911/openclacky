@@ -1929,21 +1929,33 @@ body {
 #chat-panel { flex: 1; display: flex; flex-direction: row; overflow: hidden; position: relative; }
 #chat-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; min-width: 0; }
 
-/* ── Workspace panel (right file browser) ───────────────────────────────── */
-#workspace-panel {
-  --workspace-width: 280px;
-  width: var(--workspace-width);
+/* ── Session extension slots (agent-scoped panels mount here) ───────────────
+   Each slot is laid out by the host; an empty slot collapses to zero so it
+   never reserves space when no panel is mounted for the current agent. */
+/* ── Session aside — one resizable / collapsible right column with tabs ─────
+   The host owns the chrome (resize handle, collapse button, floating opener);
+   Clacky.ext renders the tab bar + bodies into #ext-slot-session-aside. When
+   the slot has no panels for the current agent it stays empty and the whole
+   column collapses to zero width. */
+#session-aside {
+  --session-aside-width: 360px;
+  width: var(--session-aside-width);
   flex-shrink: 0;
+  position: relative;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--color-border-primary);
-  background: var(--color-bg-primary);
   overflow: hidden;
+  border-left: 1px solid var(--color-border-primary);
+  background: var(--color-bg-secondary);
   transition: width var(--transition-base);
-  position: relative;
 }
-#workspace-panel.collapsed { width: 0; border-left: none; }
-#workspace-resize-handle {
+#session-aside.collapsed { width: 0; border-left: none; }
+/* Empty slot (no panels for this agent) → collapse the whole column. */
+#session-aside:has(.session-aside-slot:empty) { width: 0; border-left: none; }
+#session-aside:has(.session-aside-slot:empty) .session-aside-resize,
+#session-aside:has(.session-aside-slot:empty) .session-aside-collapse { display: none; }
+
+.session-aside-resize {
   position: absolute;
   top: 0;
   left: -3px;
@@ -1952,40 +1964,128 @@ body {
   cursor: col-resize;
   z-index: 10;
 }
-#workspace-panel:has(#workspace-resize-handle.active) {
-  transition: background-color var(--transition-base);
-}
-#workspace-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 2.5rem;
-  min-height: 2.5rem;
-  padding: 0 0.5rem 0 0.75rem;
-  border-bottom: 1px solid var(--color-border-primary);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-.workspace-header-actions { display: flex; gap: 0.125rem; }
-.workspace-icon-btn {
+.session-aside-resize:hover { background: var(--color-accent-soft); }
+
+.session-aside-collapse {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  z-index: 11;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.625rem;
+  height: 1.625rem;
   border: none;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-text-tertiary);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background-color var(--transition-base), color var(--transition-base);
 }
-.workspace-icon-btn:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
-#workspace-tree {
+.session-aside-collapse:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+
+.session-aside-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Tab bar (rendered by Clacky.ext). Leaves room on the right for the collapse
+   button which is absolutely positioned over it. */
+.aside-tabs {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  padding: 0 38px 0 4px;
+  gap: 2px;
+  border-bottom: 1px solid var(--color-border-primary);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.aside-tabs::-webkit-scrollbar { display: none; }
+.aside-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-size: 12.5px;
+  color: var(--color-text-tertiary);
+  border-bottom: 2px solid transparent;
+}
+.aside-tab:hover { color: var(--color-text-secondary); }
+.aside-tab.active { color: var(--color-text-primary); border-bottom-color: var(--color-accent-primary); font-weight: 600; }
+.aside-tab-badge {
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent-primary);
+  color: var(--color-text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.aside-bodies { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.aside-panel { flex: 1; min-height: 0; overflow: auto; display: none; flex-direction: column; }
+.aside-panel.active { display: flex; }
+
+/* Floating opener shown when the column is collapsed. */
+.session-aside-opener {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-border-primary);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.06));
+  transition: background-color var(--transition-base), color var(--transition-base);
+}
+.session-aside-opener:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
+
+.session-banner:empty,
+.session-composer:empty { display: none; }
+.session-banner { flex-shrink: 0; }
+.session-composer { flex-shrink: 0; }
+
+/* ── File tree (used inside the Files tab) ──────────────────────────────── */
+.wt-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.wt-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+.wt-bar-hint { font-size: 11px; color: var(--color-text-tertiary); }
+.wt-bar-btn {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid var(--color-border-primary);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.wt-bar-btn:hover { background: var(--color-bg-hover); }
+.wt-tree {
   flex: 1;
   overflow-y: auto;
-  padding: 0.375rem 0.25rem;
+  padding: 6px 8px;
   font-size: 0.8125rem;
   font-family: var(--font-mono);
 }
@@ -2021,26 +2121,6 @@ body {
   color: var(--color-text-secondary);
 }
 .wt-error { color: var(--color-danger, #d23); }
-
-/* Collapsed-state opener tab — floats at the right edge of the chat area */
-#btn-workspace-open {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  z-index: 8;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid var(--color-border-primary);
-  background: var(--color-bg-secondary);
-  color: var(--color-text-secondary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: background-color var(--transition-base), color var(--transition-base);
-}
-#btn-workspace-open:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 
 /* Mobile-only floating back button — replaces the old in-header back button.
    Hidden on desktop; mobile media query enables it. Positioned absolutely so

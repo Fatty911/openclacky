@@ -466,4 +466,63 @@ RSpec.describe "Clacky::Agent TimeMachine" do
       expect(agent.get_child_tasks(2)).to contain_exactly(3, 4)
     end
   end
+
+  describe "#preview_restore_to_task" do
+    before do
+      create_file("file.txt", "v0")
+      agent.start_new_task
+      task_write("file.txt", "v1")
+      agent.start_new_task
+      task_write("file.txt", "v2")
+      agent.start_new_task
+      task_write("file.txt", "v3")
+    end
+
+    it "lists files that would be modified when restoring to a past task" do
+      changes = agent.preview_restore_to_task(1)
+      expect(changes).to eq([{ path: "file.txt", action: "modify" }])
+    end
+
+    it "returns an empty list when target state matches working dir" do
+      expect(agent.preview_restore_to_task(3)).to eq([])
+    end
+
+    it "marks files as delete when they were created after the target task" do
+      agent.start_new_task
+      task_write("created.txt", "brand new")
+
+      changes = agent.preview_restore_to_task(3)
+      paths = changes.each_with_object({}) { |c, h| h[c[:path]] = c[:action] }
+      expect(paths["created.txt"]).to eq("delete")
+    end
+
+    it "marks files as create when they were deleted after the target task" do
+      agent.start_new_task
+      agent.record_file_before_change(File.join(working_dir, "file.txt"))
+      FileUtils.rm_f(File.join(working_dir, "file.txt"))
+
+      changes = agent.preview_restore_to_task(3)
+      paths = changes.each_with_object({}) { |c, h| h[c[:path]] = c[:action] }
+      expect(paths["file.txt"]).to eq("create")
+    end
+
+    it "does not modify the working dir" do
+      File.write(File.join(working_dir, "file.txt"), "v3")
+      agent.preview_restore_to_task(0)
+      expect(read_file("file.txt")).to eq("v3")
+    end
+
+    it "actually matches what restore_to_task_state would produce" do
+      preview = agent.preview_restore_to_task(1)
+      agent.restore_to_task_state(1)
+      preview.each do |c|
+        case c[:action]
+        when "delete"
+          expect(File.exist?(File.join(working_dir, c[:path]))).to be false
+        when "create", "modify"
+          expect(File.exist?(File.join(working_dir, c[:path]))).to be true
+        end
+      end
+    end
+  end
 end

@@ -41,21 +41,38 @@ module Clacky
         @task_parents ||= {}      # { task_id => parent_id }
         @current_task_id ||= 0    # Latest created task ID
         @active_task_id ||= 0     # Current active task ID (for undo/redo)
+        @task_meta ||= {}         # { task_id => { title:, started_at:, ended_at: } }
+        @latest_after_dirty = false if @latest_after_dirty.nil?
       end
 
       # Start a new task and establish parent relationship
+      # @param title [String, nil] Short label for this turn (typically the
+      #   user's first message, truncated). Used by the UI to label snapshots
+      #   even after the original conversation has been compressed out of
+      #   @history. nil → leave unset; the UI falls back to "Task N".
       # Made public for testing
-      def start_new_task
+      def start_new_task(title: nil)
         # Before the currently-active task stops being the latest, freeze its
         # end-of-task disk state into an AFTER snapshot. Without this, a task
         # that later gets superseded by a sibling branch would have no record
         # of its result, making a forward switch back to it impossible.
         checkpoint_latest_task_after
 
+        # Close out the task we're leaving.
+        if @active_task_id.to_i > 0 && @task_meta[@active_task_id]
+          @task_meta[@active_task_id][:ended_at] ||= Time.now.to_f
+        end
+
         parent_id = @active_task_id
         @current_task_id += 1
         @active_task_id = @current_task_id
         @task_parents[@current_task_id] = parent_id
+
+        @task_meta[@current_task_id] = {
+          title: title ? truncate_task_title(title) : nil,
+          started_at: Time.now.to_f,
+          ended_at: nil,
+        }
 
         # Claim ownership of this task for the current thread.
         # If a stale thread (e.g. a slow subagent) wakes up later it will see
@@ -66,6 +83,21 @@ module Clacky
         @latest_after_dirty = true
 
         @current_task_id
+      end
+
+      # Update the title of the currently-active task. Used by callers that
+      # only learn the user-facing label after start_new_task has run.
+      def set_current_task_title(title)
+        return if @active_task_id.to_i <= 0
+        @task_meta[@active_task_id] ||= { started_at: Time.now.to_f, ended_at: nil }
+        @task_meta[@active_task_id][:title] = truncate_task_title(title)
+      end
+
+      private def truncate_task_title(text)
+        s = text.to_s
+        # Collapse whitespace so multi-line inputs render as a single label.
+        s = s.gsub(/\s+/, " ").strip
+        s.length > 60 ? "#{s[0...57]}..." : s
       end
 
       # Record a file's BEFORE state for the current task, the first time the
@@ -157,10 +189,27 @@ module Clacky
         # Freeze the task we're leaving so a later forward switch can return.
         checkpoint_latest_task_after
 
+        plan = build_restore_plan(task_id)
+        plan.each do |rel, decision|
+          target = File.join(@working_dir, rel)
+          if decision[:action] == :delete
+            FileUtils.rm_f(target)
+          else
+            FileUtils.mkdir_p(File.dirname(target))
+            FileUtils.cp(decision[:source], target)
+          end
+        end
+      rescue StandardError
+        raise
+      end
+
+      # Decide, for every file the session has ever touched, whether restoring
+      # to `task_id` should overwrite it with a snapshot or delete it. Pure
+      # function over the snapshot tree — does not touch the working dir.
+      # @return [Hash{String => Hash}] rel_path => { action: :delete | :restore, source: String|nil }
+      private def build_restore_plan(task_id)
         session_root = TimeMachine.session_dir(@session_id)
 
-        # Ancestor chain from the target task up to (and excluding) root 0,
-        # ordered nearest-first so the closest writer of each file wins.
         ancestors = []
         tid = task_id
         until tid.nil? || tid <= 0 || ancestors.include?(tid)
@@ -168,22 +217,20 @@ module Clacky
           tid = @task_parents[tid]
         end
 
-        # Every file ever touched by any task in this session.
         all_rels = Set.new
         Dir.glob(File.join(session_root, "task-*", "before", "**", "*"), File::FNM_DOTMATCH).each do |path|
           next if File.directory?(path)
-
           rel = path.sub(%r{\A.*/before/}, "")
           rel = rel.sub(/\.#{Regexp.escape(ABSENT_MARKER)}\z/, "")
           all_rels << rel
         end
 
+        plan = {}
         all_rels.each do |rel|
           action = :delete
           source = nil
           matched = false
 
-          # Closest ancestor (starting at the target) that produced this file.
           ancestors.each do |aid|
             after_dir = File.join(session_root, "task-#{aid}", "after")
             content_path = File.join(after_dir, rel)
@@ -201,11 +248,6 @@ module Clacky
             end
           end
 
-          # No task on the chain produced this file. Restore the session's
-          # INITIAL content for it — captured as the earliest BEFORE recorded
-          # for this file by any task (BEFORE = state just before that task
-          # ran; the smallest task id therefore holds the pre-session state).
-          # No BEFORE at all => the file never existed initially, so delete.
           unless matched
             initial = earliest_before_snapshot(session_root, rel)
             if initial
@@ -216,16 +258,49 @@ module Clacky
             end
           end
 
+          plan[rel] = { action: action, source: source }
+        end
+
+        plan
+      end
+
+      # Preview the file-level effect of restore_to_task_state(task_id) without
+      # touching disk. Compares the resolved restore plan against the current
+      # working-dir state and returns only files that would actually change.
+      # @return [Array<Hash>] [{ path:, action: "create"|"modify"|"delete" }]
+      def preview_restore_to_task(task_id)
+        return [] unless task_id.is_a?(Integer) && task_id >= 0
+
+        checkpoint_latest_task_after
+        plan = build_restore_plan(task_id)
+        changes = []
+
+        plan.each do |rel, decision|
           target = File.join(@working_dir, rel)
-          if action == :delete
-            FileUtils.rm_f(target)
+          target_exists = File.exist?(target)
+
+          if decision[:action] == :delete
+            changes << { path: rel, action: "delete" } if target_exists
           else
-            FileUtils.mkdir_p(File.dirname(target))
-            FileUtils.cp(source, target)
+            src = decision[:source]
+            next unless src && File.exist?(src)
+
+            if !target_exists
+              changes << { path: rel, action: "create" }
+            elsif !files_equal?(src, target)
+              changes << { path: rel, action: "modify" }
+            end
           end
         end
+
+        changes.sort_by { |c| c[:path] }
+      end
+
+      private def files_equal?(a, b)
+        return false unless File.size(a) == File.size(b)
+        File.binread(a) == File.binread(b)
       rescue StandardError
-        raise
+        false
       end
 
       # The initial (pre-session) content path for a file, taken from the
@@ -331,6 +406,143 @@ module Clacky
         @task_parents.select { |_, parent| parent == task_id }.keys
       end
 
+      # Cheap version of task_diff_files: just count how many distinct files
+      # this task touched, so the timeline can grey out no-op tasks without
+      # paying for a full diff walk per row.
+      def task_change_count(task_id)
+        return 0 unless task_id.is_a?(Integer) && task_id > 0
+
+        session_root = TimeMachine.session_dir(@session_id)
+        before_dir = File.join(session_root, "task-#{task_id}", "before")
+        after_dir  = File.join(session_root, "task-#{task_id}", "after")
+        return 0 unless Dir.exist?(before_dir)
+        return 0 if task_id == @current_task_id && @latest_after_dirty == true && !Dir.exist?(after_dir)
+
+        rels = Set.new
+        [before_dir, after_dir].each do |root|
+          next unless Dir.exist?(root)
+          Dir.glob(File.join(root, "**", "*"), File::FNM_DOTMATCH).each do |path|
+            next if File.directory?(path)
+            rel = path.sub(root + "/", "").sub(/\.#{Regexp.escape(ABSENT_MARKER)}\z/, "")
+            rels << rel
+          end
+        end
+        rels.size
+      end
+
+      # File-level summary of changes a task introduced. Diff is task-N/before
+      # vs task-N/after (after is captured by checkpoint_latest_task_after when
+      # the task stops being the latest, so this method has no useful answer
+      # for the currently-active task — callers get an empty list back).
+      # @return [Array<Hash>] Each entry: { path:, status: "added"|"modified"|"deleted", binary: Bool }
+      def task_diff_files(task_id)
+        return [] unless task_id.is_a?(Integer) && task_id > 0
+
+        session_root = TimeMachine.session_dir(@session_id)
+        before_dir = File.join(session_root, "task-#{task_id}", "before")
+        after_dir  = File.join(session_root, "task-#{task_id}", "after")
+        return [] unless Dir.exist?(before_dir)
+        return [] if task_id == @current_task_id && @latest_after_dirty == true && !Dir.exist?(after_dir)
+
+        rels = Set.new
+        [before_dir, after_dir].each do |root|
+          next unless Dir.exist?(root)
+          Dir.glob(File.join(root, "**", "*"), File::FNM_DOTMATCH).each do |path|
+            next if File.directory?(path)
+            rel = path.sub(root + "/", "").sub(/\.#{Regexp.escape(ABSENT_MARKER)}\z/, "")
+            rels << rel
+          end
+        end
+
+        rels.sort.map do |rel|
+          before_file, before_absent = snapshot_paths(before_dir, rel)
+          after_file,  after_absent  = snapshot_paths(after_dir,  rel)
+
+          status = if before_absent && after_file
+            "added"
+          elsif before_file && after_absent
+            "deleted"
+          elsif before_file && after_file
+            "modified"
+          elsif before_file && !File.exist?(after_dir)
+            # No AFTER captured (e.g. the very latest task) — still surface
+            # what was touched as "modified" so the UI can list the file.
+            "modified"
+          else
+            "modified"
+          end
+
+          binary = looks_binary?(before_file) || looks_binary?(after_file)
+          { path: rel, status: status, binary: binary }
+        end
+      end
+
+      # Unified diff of a single file for a task. Returns nil if either side
+      # is missing or binary. text format = "@@ ... @@" patch (3-context),
+      # ready for the UI to render with a diff renderer.
+      # @return [Hash, nil] { path:, before:, after:, patch:, binary: }
+      def task_file_diff(task_id, rel_path)
+        return nil unless task_id.is_a?(Integer) && task_id > 0
+        return nil if rel_path.to_s.include?("..")
+
+        session_root = TimeMachine.session_dir(@session_id)
+        before_dir = File.join(session_root, "task-#{task_id}", "before")
+        after_dir  = File.join(session_root, "task-#{task_id}", "after")
+
+        before_file, before_absent = snapshot_paths(before_dir, rel_path)
+        after_file,  after_absent  = snapshot_paths(after_dir,  rel_path)
+
+        before_text = before_absent ? "" : (before_file ? read_text_safe(before_file) : nil)
+        after_text  = after_absent  ? "" : (after_file  ? read_text_safe(after_file)  : nil)
+
+        if before_text.nil? && after_text.nil?
+          return nil
+        end
+
+        # Detect binary on either side: bail out, the UI will render a stub.
+        if (before_file && looks_binary?(before_file)) || (after_file && looks_binary?(after_file))
+          return { path: rel_path, before: nil, after: nil, patch: nil, binary: true }
+        end
+
+        require "diffy" unless defined?(Diffy)
+        raw = Diffy::Diff.new(before_text || "", after_text || "",
+                              context: 3, include_diff_info: true).to_s(:text)
+        # Strip Diffy's "--- /tmp/diffy.../before" header pair: it leaks
+        # tempfile paths and adds noise the UI doesn't need.
+        patch = raw.sub(/\A(?:---[^\n]*\n[^\n]*\n)/, "")
+
+        { path: rel_path, before: before_text, after: after_text, patch: patch, binary: false }
+      end
+
+      private def snapshot_paths(dir, rel)
+        content_path = File.join(dir, rel)
+        absent_path  = "#{content_path}.#{ABSENT_MARKER}"
+        if File.exist?(content_path)
+          [content_path, false]
+        elsif File.exist?(absent_path)
+          [nil, true]
+        else
+          [nil, false]
+        end
+      end
+
+      private def looks_binary?(path)
+        return false if path.nil? || !File.exist?(path)
+        sample = File.binread(path, 8000)
+        sample.include?("\x00") || !sample.dup.force_encoding("UTF-8").valid_encoding?
+      rescue StandardError
+        true
+      end
+
+      private def read_text_safe(path)
+        File.read(path, mode: "rb").then do |s|
+          s.encoding == Encoding::UTF_8 && s.valid_encoding? ? s :
+            s.encode("UTF-8", invalid: :replace, undef: :replace, replace: "\u{FFFD}")
+        end
+      rescue StandardError
+        ""
+      end
+
       # Get task history with summaries for UI display
       # @param limit [Integer] Maximum number of recent tasks to return
       # @return [Array<Hash>] Task history with metadata
@@ -341,17 +553,23 @@ module Clacky
 
         tasks = []
         (1..@current_task_id).to_a.reverse.take(limit).reverse.each do |task_id|
-          # Find first user message for this task
-          first_user_msg = @history.to_a.find do |msg|
-            msg[:task_id] == task_id && msg[:role] == "user"
-          end
+          meta = (@task_meta || {})[task_id] || {}
 
-          summary = if first_user_msg
-            content = extract_message_text(first_user_msg[:content])
-            # Truncate to 60 characters (including "...")
-            content.length > 60 ? "#{content[0...57]}..." : content
+          summary = if meta[:title] && !meta[:title].to_s.empty?
+            meta[:title]
           else
-            "Task #{task_id}"
+            # Best-effort fallback: scan @history for the task's first real
+            # user message. Returns nothing for tasks that have already been
+            # compressed out — the UI then shows "Task N".
+            first = @history.to_a.find do |msg|
+              msg[:role] == "user" && msg[:task_id] == task_id && !msg[:system_injected]
+            end
+            if first
+              text = extract_message_text(first[:content]).to_s.gsub(/\s+/, " ").strip
+              text.length > 60 ? "#{text[0...57]}..." : text
+            else
+              "Task #{task_id}"
+            end
           end
 
           # Status relative to the ACTIVE task chain (not a linear id compare),
@@ -372,8 +590,11 @@ module Clacky
           tasks << {
             task_id: task_id,
             summary: summary,
+            started_at: meta[:started_at],
+            ended_at: meta[:ended_at],
             status: status,
-            has_branches: has_branches
+            has_branches: has_branches,
+            change_count: task_change_count(task_id),
           }
         end
 

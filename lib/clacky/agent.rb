@@ -262,7 +262,7 @@ module Clacky
       @ui&.show_progress
 
       # Start new task for Time Machine
-      task_id = start_new_task
+      task_id = start_new_task(title: display_text.to_s.empty? ? user_input.to_s : display_text.to_s)
 
       # Continuation of a previously-interrupted task (e.g. user sent a
       # supplementary message without stopping the running task) keeps the
