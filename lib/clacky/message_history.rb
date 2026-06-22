@@ -85,6 +85,15 @@ module Clacky
       self
     end
 
+    # Truncate history starting from the user message with the given created_at timestamp.
+    # Removes that message and everything after it. Returns self.
+    def truncate_from_created_at(created_at)
+      idx = @messages.index { |m| m[:role] == "user" && m[:created_at].to_s == created_at.to_s }
+      return self unless idx
+
+      truncate_from(idx)
+    end
+
     # Roll back the history to just before the given message object.
     # Removes the message and anything appended after it.
     # Used to undo a failed speculative append (e.g. compression message that errored).
