@@ -1,6 +1,6 @@
 ---
 name: media-gen
-description: 'Generate images, videos, or audio (text-to-speech) in the current task. Use whenever the user asks to create/generate/produce a picture / image / illustration / cover / poster / icon / artwork, a video / clip / animation, or speech / voiceover / narration / TTS — e.g. generate image, draw, design a cover, text-to-video, generate speech; 画一张, 配图, 做个视频, 配音, 文字转语音. Also use when a document (slides, poster, README hero) needs an inline image.'
+description: 'Generate or edit images, videos, or audio (text-to-speech) in the current task. Use whenever the user asks to create/generate/produce or edit/modify a picture / image / illustration / cover / poster / icon / artwork, a video / clip / animation, or speech / voiceover / narration / TTS — e.g. generate image, draw, design a cover, edit this image, change the background, text-to-video, generate speech; 画一张, 配图, 编辑图片, 改图, 换背景, 做个视频, 配音, 文字转语音. Also use when a document (slides, poster, README hero) needs an inline image.'
 disable-model-invocation: false
 user-invocable: true
 always-show: true
@@ -8,7 +8,7 @@ always-show: true
 
 # media-gen
 
-Generate images on demand by calling the local Clacky HTTP server, which dispatches to whichever image-generation model the user configured (`type=image` in their model settings).
+Generate **and edit** images on demand by calling the local Clacky HTTP server, which dispatches to whichever image-generation model the user configured (`type=image` in their model settings). Editing (image-in → image-out) works with any image model that accepts image input — most current ones do.
 
 ## Endpoint
 
@@ -74,6 +74,31 @@ curl -s -X POST http://${CLACKY_SERVER_HOST}:${CLACKY_SERVER_PORT}/api/media/ima
 | `prompt`       | yes      | string                              | Be detailed and concrete. See prompt tips below. |
 | `aspect_ratio` | no       | `landscape` / `square` / `portrait` | Defaults to `landscape`. |
 | `output_dir`   | no       | absolute path                       | Defaults to the current working directory. The image is saved under `<output_dir>/assets/generated/`. |
+| `image`        | no       | file path / base64 / data URL       | A single input image to **edit**. Triggers image-edit mode (see below). |
+| `images`       | no       | array of the above                  | Multiple input images for a multi-image edit. Takes precedence over `image`. |
+
+### Editing an existing image
+
+To edit instead of generate from scratch, pass the existing image as `image`
+(a local file path is easiest — the skill reads and encodes it for you) plus a
+`prompt` describing the change. The configured image model receives the
+image alongside the prompt and returns an edited result.
+
+```bash
+curl -s -X POST http://${CLACKY_SERVER_HOST}:${CLACKY_SERVER_PORT}/api/media/image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "change the background to a starry night sky, keep the cat unchanged",
+    "image": "/abs/path/to/input.png"
+  }'
+```
+
+- The result is a **new** edited image saved under `assets/generated/` — the
+  original file is never modified in place.
+- For combining several inputs (e.g. "put the product from image 1 onto the
+  background from image 2"), pass them as `images: ["/path/a.png", "/path/b.png"]`
+  and describe the composition in the prompt.
+- Same speed/concurrency rules apply: editing is as slow as generation, one at a time.
 
 ### Response shape (success)
 
@@ -81,7 +106,7 @@ curl -s -X POST http://${CLACKY_SERVER_HOST}:${CLACKY_SERVER_PORT}/api/media/ima
 {
   "success": true,
   "image": "/abs/path/to/working_dir/assets/generated/img_20260525_011820_a1b2c3d4.png",
-  "model": "or-gemini-3-pro-image",
+  "model": "<the configured image model>",
   "provider": "openclacky",
   "prompt": "A clean, modern hero illustration ...",
   "aspect_ratio": "landscape",
@@ -145,7 +170,6 @@ When the user gives a vague request like "给我配张图", ask one clarifying q
 
 ## When NOT to use this skill
 
-- The user asks to **edit** an existing image (this skill is text-to-image only today)
 - The user wants a **diagram / chart** with specific data — use a charting library (matplotlib, mermaid, etc.) instead; image gen is for illustrations, not data viz
 - The user asks for **screenshots** of real software — use the browser tool
 

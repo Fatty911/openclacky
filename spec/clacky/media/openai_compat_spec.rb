@@ -173,6 +173,67 @@ RSpec.describe Clacky::Media::OpenAICompat do
           "size"   => "1024x1536",
           "n"      => 1
         )
+        expect(body).not_to have_key("images")
+      end
+    end
+
+    context "image editing (input image)" do
+      let(:gemini_entry) do
+        {
+          "model"    => "or-gemini-3-1-flash-image",
+          "base_url" => "https://api.openclacky.com",
+          "api_key"  => "clacky-test-key"
+        }
+      end
+      let(:editor) { described_class.new(gemini_entry) }
+      let(:response_body) { JSON.generate({ "data" => [{ "b64_json" => Base64.strict_encode64("EDITED") }] }) }
+
+      before do
+        allow(editor).to receive(:connection).and_return(fake_conn)
+      end
+
+      it "reads a file path input and forwards it as a base64 data URL under `images`" do
+        Dir.mktmpdir do |tmp|
+          input_path = File.join(tmp, "input.png")
+          File.binwrite(input_path, "ORIGINAL_PNG")
+
+          captured_body = nil
+          req_double = double("req")
+          allow(req_double).to receive(:headers).and_return({})
+          allow(req_double).to receive(:body=) { |b| captured_body = b }
+          expect(fake_conn).to receive(:post).with("images/generations").and_yield(req_double).and_return(fake_response)
+
+          result = editor.generate_image(prompt: "make it blue", image: input_path, output_dir: tmp)
+
+          expect(result["success"]).to be true
+          body = JSON.parse(captured_body)
+          expected_b64 = Base64.strict_encode64("ORIGINAL_PNG")
+          expect(body["images"]).to eq(["data:image/png;base64,#{expected_b64}"])
+        end
+      end
+
+      it "passes through a data URL unchanged and supports multiple images" do
+        Dir.mktmpdir do |tmp|
+          data_url = "data:image/jpeg;base64,#{Base64.strict_encode64('A')}"
+          bare_b64 = Base64.strict_encode64("B")
+
+          captured_body = nil
+          req_double = double("req")
+          allow(req_double).to receive(:headers).and_return({})
+          allow(req_double).to receive(:body=) { |b| captured_body = b }
+          expect(fake_conn).to receive(:post).with("images/generations").and_yield(req_double).and_return(fake_response)
+
+          editor.generate_image(prompt: "combine", images: [data_url, bare_b64], output_dir: tmp)
+
+          body = JSON.parse(captured_body)
+          expect(body["images"]).to eq([data_url, "data:image/png;base64,#{bare_b64}"])
+        end
+      end
+
+      it "rejects an input that is neither a file nor valid base64" do
+        result = editor.generate_image(prompt: "x", image: "@@@not-base64@@@", output_dir: Dir.pwd)
+        expect(result["success"]).to be false
+        expect(result["error_type"]).to eq("invalid_argument")
       end
     end
   end

@@ -2,6 +2,7 @@
 
 require "faraday"
 require "json"
+require "base64"
 require_relative "base"
 
 module Clacky
@@ -28,7 +29,7 @@ module Clacky
       VIDEO_ASPECTS = %w[landscape portrait].freeze
       DEFAULT_VIDEO_DURATION = 8
 
-      def generate_image(prompt:, aspect_ratio: DEFAULT_ASPECT, output_dir: nil, n: 1, **_kwargs)
+      def generate_image(prompt:, aspect_ratio: DEFAULT_ASPECT, output_dir: nil, n: 1, image: nil, images: nil, **_kwargs)
         provider_id = Clacky::Providers.find_by_base_url(@base_url) || "custom"
         aspect      = ASPECT_TO_SIZE.key?(aspect_ratio) ? aspect_ratio : DEFAULT_ASPECT
         size        = ASPECT_TO_SIZE[aspect]
@@ -52,6 +53,18 @@ module Clacky
           )
         end
 
+        begin
+          input_images = normalize_input_images(image, images)
+        rescue ArgumentError => e
+          return error_response(
+            error: e.message,
+            error_type: "invalid_argument",
+            provider: provider_id,
+            prompt: prompt,
+            aspect_ratio: aspect
+          )
+        end
+
         payload = { model: @model, n: n }
         if gemini_family?(@model)
           # Gemini image models (routed via openclacky / openrouter gateway)
@@ -63,6 +76,11 @@ module Clacky
           payload[:prompt] = prompt
           payload[:size]   = size
         end
+
+        # With input image(s) this becomes an edit: the gateway forwards them
+        # to the model alongside the prompt. Sent as `images` (array) so
+        # multi-image edits work; the gateway also accepts a single `image`.
+        payload[:images] = input_images unless input_images.empty?
 
         begin
           response = connection.post("images/generations") do |req|
@@ -304,6 +322,51 @@ module Clacky
 
       private def gemini_family?(model_name)
         model_name.to_s.match?(/gemini|imagen/i)
+      end
+
+      # Normalise the optional image/edit inputs into an array of data URLs
+      # ("data:<mime>;base64,<payload>") the gateway understands. Each input
+      # may be a local file path, a data URL, or a bare base64 string.
+      # `images` (array or single) takes precedence over `image`.
+      # Raises ArgumentError on a missing file or undecodable input.
+      private def normalize_input_images(image, images)
+        raw = images.nil? ? image : images
+        return [] if raw.nil?
+
+        list = raw.is_a?(Array) ? raw : [raw]
+        list.filter_map do |item|
+          s = item.to_s.strip
+          next if s.empty?
+          to_data_url(s)
+        end
+      end
+
+      private def to_data_url(input)
+        return input if input.start_with?("data:")
+
+        # A filesystem path → read and encode.
+        if File.file?(input)
+          bytes = File.binread(input)
+          mime  = mime_for_path(input)
+          return "data:#{mime};base64,#{Base64.strict_encode64(bytes)}"
+        end
+
+        # Otherwise treat as a bare base64 payload; validate it decodes.
+        begin
+          Base64.strict_decode64(input)
+        rescue ArgumentError
+          raise ArgumentError, "input image is neither an existing file path nor valid base64"
+        end
+        "data:image/png;base64,#{input}"
+      end
+
+      private def mime_for_path(path)
+        case File.extname(path).downcase
+        when ".jpg", ".jpeg" then "image/jpeg"
+        when ".webp"         then "image/webp"
+        when ".gif"          then "image/gif"
+        else                      "image/png"
+        end
       end
 
       # base_url is taken verbatim from PRESETS (each provider already
