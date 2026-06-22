@@ -2277,12 +2277,132 @@ body {
 }
 /* Time color / alignment: anchor to the bubble's own side, let width be
    driven by content — prevents overflow on narrow bubbles. */
-.msg-user .msg-time      { color: var(--color-text-secondary); right: 0; left: auto; padding-right: 0.25rem; }
+.msg-user .msg-time      { display: none; }
 .msg-assistant .msg-time { color: var(--color-text-secondary); left: 0;  right: auto; padding-left: 0.25rem; }
 
-.msg-user      { background: var(--color-accent-soft); color: var(--color-text-primary); align-self: flex-end; white-space: pre-wrap; }
+.msg-user      { background: var(--color-accent-soft); color: var(--color-text-primary); white-space: pre-wrap; }
 [data-theme="dark"] .msg-user { background: var(--color-accent-soft); }
 .msg-assistant { background: var(--color-bg-tertiary); border: 1px solid var(--color-border-primary); align-self: flex-start; }
+
+/* ── User message action bar (copy + edit) ─────────────────────────────── */
+.msg-user-wrap {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+  padding-bottom: 1.8rem;
+}
+.msg-user-actions {
+  position: absolute;
+  top: calc(100% - 1.5rem + 2px);
+  right: 0;
+  display: flex;
+  gap: 0.125rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: 3;
+}
+.msg-user-wrap:hover .msg-user-actions { opacity: 1; pointer-events: auto; }
+.msg-user-wrap:has(.msg-user.editing) { padding-bottom: 0; }
+.msg-user-wrap:has(.msg-user.editing) .msg-user-actions { display: none; }
+
+.msg-user-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  padding: 0;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 5px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.msg-user-action-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+}
+.msg-user-action-btn:active { transform: translateY(1px); }
+.msg-user-action-btn.is-copied {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+.msg-user-copy-icon-check { display: none; }
+.msg-user-action-btn.is-copied .msg-user-copy-icon { display: none; }
+.msg-user-action-btn.is-copied .msg-user-copy-icon-check { display: inline; }
+
+/* Keep the buttons reachable without hover on touch / narrow viewports. */
+@media (hover: none) {
+  .msg-user-actions { opacity: 0.65; pointer-events: auto; }
+}
+
+/* ── Edit mode ─────────────────────────────────────────────────────────── */
+.msg-user.editing {
+  background: var(--color-bg-primary);
+  padding: 0.625rem 0.75rem 0.5rem;
+  overflow: visible;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-primary);
+  max-width: min(42rem, 90%);
+  width: min(42rem, 90%);
+}
+.msg-user-edit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+.msg-user-edit-textarea {
+  width: 100%;
+  min-height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  resize: none;
+  overflow: hidden;
+  outline: none;
+  white-space: pre-wrap;
+}
+.msg-user-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+.msg-user-edit-cancel {
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.msg-user-edit-cancel:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+.msg-user-edit-send {
+  padding: 0.25rem 0.75rem;
+  border: none;
+  border-radius: 5px;
+  background: var(--color-button-primary);
+  color: var(--color-button-primary-text);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.msg-user-edit-send:hover { opacity: 0.88; }
+.msg-user-edit-send:active { opacity: 0.76; }
 
 /* ── Copy button on assistant messages ────────────────────────────────────
    Hidden by default, revealed on bubble hover (same pattern as .msg-time).
@@ -2317,8 +2437,8 @@ body {
 }
 .msg-copy-btn.is-copied {
   opacity: 1;
-  color: #10b981;               /* success green — same across themes */
-  border-color: #10b981;
+  color: var(--color-success);
+  border-color: var(--color-success);
   background: var(--color-bg-primary);
 }
 .msg-copy-btn .msg-copy-icon,
@@ -11807,5 +11927,35 @@ body.setup-mode[data-theme="dark"] {
     flex: 1 0 100%;
     font-size: 0.7rem;
     color: var(--color-text-tertiary);
+  }
+
+  /* Session aside: fixed overlay on mobile */
+  #session-aside {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100%;
+    z-index: 200;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.18);
+    transition: transform 0.3s ease, background-color 0.3s ease;
+    transform: translateX(0);
+    width: var(--session-aside-width);
+  }
+  #session-aside.collapsed {
+    transform: translateX(100%);
+    width: var(--session-aside-width);
+    border-left: 1px solid var(--color-border-primary);
+  }
+  #session-aside-resize { display: none; }
+
+  #workspace-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: rgba(0,0,0,0.4);
+  }
+  #workspace-overlay.active {
+    display: block;
   }
 }

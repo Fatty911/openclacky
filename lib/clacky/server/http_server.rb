@@ -615,6 +615,9 @@ module Clacky
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/messages$})
             session_id = path.sub("/api/sessions/", "").sub("/messages", "")
             api_session_messages(session_id, req, res)
+          elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+$})
+            session_id = path.sub("/api/sessions/", "")
+            api_get_session(session_id, res)
           elsif method == "PATCH" && path.match?(%r{^/api/sessions/[^/]+$})
             session_id = path.sub("/api/sessions/", "")
             api_rename_session(session_id, req, res)
@@ -720,6 +723,16 @@ module Clacky
         sessions = pinned_part + non_pinned_part
 
         json_response(res, 200, { sessions: sessions, has_more: has_more, cron_count: @registry.cron_count })
+      end
+
+      # GET /api/sessions/:id — fetch a single session by id (memory + disk merged).
+      # Used by the frontend Router when navigating to a session that isn't in
+      # the paged sidebar list (search results, URL deep links, share links,
+      # browser back/forward, external notifications, etc.).
+      def api_get_session(session_id, res)
+        row = @registry.snapshot(session_id)
+        return json_response(res, 404, { error: "Session not found" }) unless row
+        json_response(res, 200, { session: row })
       end
 
       def api_create_session(req, res)
@@ -5452,6 +5465,10 @@ module Clacky
             conn.send_json(type: "error", message: "Session not found: #{session_id}")
           end
 
+        when "edit_message"
+          session_id = msg["session_id"] || conn.session_id
+          handle_edit_message(session_id, msg["content"].to_s, msg["created_at"].to_s)
+
         when "message"
           session_id = msg["session_id"] || conn.session_id
           # Merge legacy images array into files as { data_url:, name:, mime_type: } entries
@@ -5501,6 +5518,20 @@ module Clacky
       end
 
       # ── Session actions ───────────────────────────────────────────────────────
+
+      def handle_edit_message(session_id, content, created_at)
+        return unless @registry.exist?(session_id)
+
+        agent = nil
+        @registry.with_session(session_id) { |s| agent = s[:agent] }
+        return unless agent
+
+        if agent.history.respond_to?(:truncate_from_created_at) && !created_at.to_s.empty?
+          agent.history.truncate_from_created_at(created_at)
+        end
+
+        handle_user_message(session_id, content)
+      end
 
       def handle_user_message(session_id, content, files = [])
         return unless @registry.exist?(session_id)
