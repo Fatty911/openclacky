@@ -11712,4 +11712,34 @@ body.setup-mode[data-theme="dark"] {
     font-size: 0.7rem;
     color: var(--color-text-tertiary);
   }
+
+  /* Workspace panel: fixed overlay on mobile */
+  #workspace-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100%;
+    z-index: 200;
+    box-shadow: -4px 0 24px rgba(0,0,0,0.18);
+    transition: transform 0.3s ease, background-color 0.3s ease;
+    transform: translateX(0);
+    width: var(--workspace-width);
+  }
+  #workspace-panel.collapsed {
+    transform: translateX(100%);
+    width: var(--workspace-width);
+    border-left: 1px solid var(--color-border-primary);
+  }
+  #workspace-resize-handle { display: none; }
+
+  #workspace-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: rgba(0,0,0,0.4);
+  }
+  #workspace-overlay.active {
+    display: block;
+  }
 }
