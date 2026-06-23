@@ -9198,6 +9198,7 @@ body.setup-mode[data-theme="dark"] {
 
 /* Shared base for per-card buttons. */
 .btn-memory-curate,
+.btn-memory-edit,
 .btn-memory-delete,
 .btn-memory-expand {
   padding: 0.3125rem 0.625rem;
@@ -9213,7 +9214,8 @@ body.setup-mode[data-theme="dark"] {
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
-.btn-memory-curate:hover {
+.btn-memory-curate:hover,
+.btn-memory-edit:hover {
   border-color: var(--color-text-primary);
   background: var(--color-bg-hover);
 }
