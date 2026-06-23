@@ -2122,7 +2122,7 @@ body {
   transition: transform var(--transition-base);
 }
 .wt-caret.open { transform: rotate(90deg); }
-.wt-caret.leaf { visibility: hidden; }
+.wt-caret.leaf { display: none; }
 .wt-icon { display: inline-flex; flex-shrink: 0; color: var(--color-text-secondary); }
 .wt-name { overflow: hidden; text-overflow: ellipsis; }
 .wt-size { margin-left: auto; padding-left: 0.5rem; font-size: 0.6875rem; color: var(--color-text-tertiary, var(--color-text-secondary)); flex-shrink: 0; }
