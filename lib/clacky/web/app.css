@@ -4313,7 +4313,6 @@ body {
   padding: 2rem 2rem 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
 }
 .settings-section {
   display: flex;
@@ -6849,6 +6848,110 @@ body {
   background: var(--color-error-bg, #fff0f0);
 }
 
+
+/* ── CodeEditor (CodeMirror 6) Modal ────────────────────────────────────── */
+.code-editor-modal {
+  background: var(--color-bg-secondary);
+  border-radius: 12px;
+  border: 1px solid var(--color-border-primary);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  width: 92%;
+  max-width: 820px;
+  height: 82vh;
+  max-height: 860px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.code-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.code-editor-header h3 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+  color: var(--color-text-primary);
+}
+.code-editor-close {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  padding: 0;
+}
+.code-editor-close:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-hover);
+}
+.code-editor-body {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.code-editor-body .cm-editor {
+  height: 100%;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  background: transparent;
+}
+.code-editor-body .cm-editor .cm-content {
+  background: transparent;
+}
+.code-editor-body .cm-editor.cm-focused {
+  outline: none;
+}
+.code-editor-body .cm-scroller {
+  overflow: auto;
+  font-family: var(--font-mono, 'SF Mono', 'Fira Code', monospace);
+}
+.code-editor-body .cm-gutters {
+  background: transparent;
+  border-right: 1px solid var(--color-border-primary);
+  color: var(--color-text-tertiary);
+}
+
+.code-editor-body .cm-activeLineGutter {
+  background: var(--color-bg-hover);
+}
+.code-editor-body .cm-activeLine {
+  background: var(--color-bg-hover);
+}
+.code-editor-body .cm-selectionBackground {
+  background: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
+}
+.code-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+  gap: 0.75rem;
+}
+.code-editor-status {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+.code-editor-status-error {
+  color: var(--color-error, #c0392b);
+}
+.code-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 /* ── Skills sidebar section ──────────────────────────────────────────────── */
 #skill-list-items { padding: 0 0.5rem 0.5rem; display: flex; flex-direction: column; gap: 2px; }
 
@@ -8917,6 +9020,29 @@ body.setup-mode[data-theme="dark"] {
 .btn-profile-update:disabled {
   opacity: 0.55;
   cursor: wait;
+}
+
+.profile-pane-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.btn-profile-edit {
+  padding: 0.5rem 1.125rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-primary);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.btn-profile-edit:hover {
+  border-color: var(--color-button-primary);
+  color: var(--color-button-primary);
 }
 
 /* ── Minimal-Markdown rendered body ───────────────────────────────────── */
