@@ -608,6 +608,8 @@ module Clacky
             api_session_time_machine_restore_preview(session_id, task_id, res)
           elsif method == "GET" && path == "/api/dirs"
             api_browse_dirs(req, res)
+          elsif method == "POST" && path == "/api/dirs/mkdir"
+            api_dirs_mkdir(req, res)
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/files$})
             session_id = path.sub("/api/sessions/", "").sub("/files", "")
             api_session_files(session_id, req, res)
@@ -3821,7 +3823,7 @@ module Clacky
         # Directories first, then files; both case-insensitive alphabetical.
         items.sort_by! { |it| [it[:type] == "dir" ? 0 : 1, it[:name].downcase] }
 
-        json_response(res, 200, { root: display_root, path: rel, entries: items })
+        json_response(res, 200, { root: display_root, path: rel, home: Dir.home, default: default_working_dir, entries: items })
       rescue StandardError => e
         json_response(res, 500, { error: e.message })
       end
@@ -3859,10 +3861,55 @@ module Clacky
         end
         items.sort_by! { |it| it[:name].downcase }
 
-        json_response(res, 200, { root: target, path: target, parent: File.dirname(target), home: Dir.home, entries: items })
+        json_response(res, 200, { root: target, path: target, parent: File.dirname(target), home: Dir.home, default: default_working_dir, entries: items })
       rescue StandardError => e
         json_response(res, 500, { error: e.message })
       end
+
+      # ── Directory mutation API used by the path picker ─────────────────
+      # Validate a folder name supplied by the picker UI:
+      # non-empty, no path separators, not "."/"..", short-ish.
+      private def picker_valid_name?(name)
+        return false if name.nil?
+        return false if name.empty? || name.length > 255
+        return false if name == "." || name == ".."
+        # Reject path separators (forward slash and backslash).
+        return false if name.match?(%r{[/\\]})
+        true
+      end
+
+      # POST /api/dirs/mkdir
+      # Body: { parent: "/abs/parent", name: "New Folder" }
+      def api_dirs_mkdir(req, res)
+        body   = parse_json_body(req)
+        parent = body["parent"].to_s
+        name   = body["name"].to_s.strip
+
+        return json_response(res, 422, { error: "parent must be an absolute path" }) unless parent.start_with?("/")
+        return json_response(res, 422, { error: "name is invalid" }) unless picker_valid_name?(name)
+
+        parent = File.expand_path(parent)
+        return json_response(res, 404, { error: "Parent directory not found" }) unless Dir.exist?(parent)
+
+        target = File.join(parent, name)
+        return json_response(res, 422, { error: "Already exists" }) if File.exist?(target)
+
+        FileUtils.mkdir_p(target)
+        json_response(res, 200, { ok: true, path: target, name: name })
+      rescue StandardError => e
+        json_response(res, 500, { error: e.message })
+      end
+
+      # NOTE: there is NO PATCH /api/dirs/rename endpoint.
+      # Directory rename was intentionally removed from the picker —
+      # too dangerous for a one-click UI affordance (renaming an in-use
+      # workspace mid-session can break tasks, sessions, MCP configs, …).
+      # Use the terminal for that.
+
+      # NOTE: there is NO DELETE /api/dirs/delete endpoint.
+      # Directory deletion was intentionally removed from the picker —
+      # too dangerous for a one-click UI affordance, even with a trash
+      # bucket fallback. Use the terminal (safe_rm) for that.
 
       # Body: { enabled: true/false }
       def api_toggle_skill(name, req, res)
