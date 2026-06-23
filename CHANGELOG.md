@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-06-23
+
+### Added
+- Profile editor with CodeMirror for editing agent SOUL/USER files
+- Inline editing for memory cards
+- Workspace file preview, plus "copy path" in the context menu and a close button in the code editor
+- Time Machine: browse and restore previous workspace states via git
+- Image editing support in media generation
+- Copy and edit actions on user/assistant message bubbles
+- Media output directory configuration in settings
+- Web UI extension support
+- Health check endpoint and signal logging
+
+### Improved
+- Differentiated icons and reordered buttons in the context menu and memory card
+- Removed the standalone preview panel for a cleaner workspace layout
+- Throttle duplicate inbound channel messages
+- Session bar labels no longer wrap
+- Added Japanese README (README_JA.md)
+
+### Fixed
+- Lock the default-model checkbox when only one model exists (C-5677)
+- Jump to a session that is not yet loaded in the sidebar (C-5679)
+- Workspace panel now uses overlay mode on mobile
+- Clarified that `include_sessions` applies to auto-backup only (UI)
+- Removed extra padding from model cards in the grid
+- Moved profile fetch into the store and fixed the architecture spec
+
 ## [1.3.2] - 2026-06-18
 
 ### Added
