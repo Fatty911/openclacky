@@ -230,7 +230,7 @@ bin/clacky
 
 ## コントリビュート
 
-バグ報告とプルリクエストは GitHub（https://github.com/clacky-ai/openclacky）で歓迎しています。コントリビューターは[行動規範](https://github.com/clacky-ai/openclacky/blob/main/CODE_OF_CONDUCT.md)を遵守することが求められます。
+バグ報告とプルリクエストは GitHub（ https://github.com/clacky-ai/openclacky ）で歓迎しています。コントリビューターは[行動規範](https://github.com/clacky-ai/openclacky/blob/main/CODE_OF_CONDUCT.md)を遵守することが求められます。
 
 ## ライセンス
 
