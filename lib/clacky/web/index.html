@@ -744,7 +744,10 @@
           <div id="profile-soul-body" class="profile-markdown"></div>
           <div class="profile-pane-footer">
             <p class="profile-pane-footer-hint" data-i18n="profile.soul.curateHint">Not quite right? Let the assistant curate this through a short conversation.</p>
-            <button id="btn-profile-curate-soul" class="btn-profile-update" data-i18n="profile.soul.curateBtn">Have the assistant curate this</button>
+            <div class="profile-pane-footer-actions">
+              <button id="btn-profile-curate-soul" class="btn-profile-update" data-i18n="profile.soul.curateBtn">Have the assistant curate this</button>
+              <button id="btn-profile-edit-soul" class="btn-profile-edit" data-i18n="profile.soul.editBtn">Edit directly</button>
+            </div>
           </div>
         </section>
 
@@ -760,7 +763,10 @@
           <div id="profile-user-body" class="profile-markdown"></div>
           <div class="profile-pane-footer">
             <p class="profile-pane-footer-hint" data-i18n="profile.user.curateHint">Changed jobs? Picked up new interests? Let the assistant update your profile.</p>
-            <button id="btn-profile-curate-user" class="btn-profile-update" data-i18n="profile.user.curateBtn">Have the assistant update this</button>
+            <div class="profile-pane-footer-actions">
+              <button id="btn-profile-curate-user" class="btn-profile-update" data-i18n="profile.user.curateBtn">Have the assistant update this</button>
+              <button id="btn-profile-edit-user" class="btn-profile-edit" data-i18n="profile.user.editBtn">Edit directly</button>
+            </div>
           </div>
         </section>
 
@@ -1464,7 +1470,9 @@
 
 <div id="tooltip" style="display:none"></div>
 
-<script src="/marked.min.js"></script>
+<script src="/vendor/codemirror/codemirror.min.js"></script>
+<script src="/components/code-editor.js"></script>
+<script src="/vendor/marked/marked.min.js"></script>
 <script src="/vendor/hljs/highlight.min.js"></script>
 <script src="/vendor/katex/katex.min.js"></script>
 <script src="/vendor/katex/auto-render.min.js"></script>
@@ -1474,13 +1482,13 @@
 <script src="/i18n.js"></script>
 <script src="/auth.js"></script>
 <script src="/theme.js"></script>
-<script src="/notify.js"></script>
+<script src="/components/notify.js"></script>
 <script src="/ws.js"></script>
 <script src="/ws-dispatcher.js"></script>
 <script src="/sessions.js"></script>
 <script src="/features/workspace/store.js"></script>
 <script src="/features/workspace/view.js"></script>
-<script src="/datepicker.js"></script>
+<script src="/components/datepicker.js"></script>
 <script src="/features/tasks/store.js"></script>
 <script src="/features/tasks/view.js"></script>
 <script src="/features/skills/store.js"></script>
@@ -1497,7 +1505,7 @@
 <script src="/settings.js"></script>
 <script src="/features/billing/store.js"></script>
 <script src="/features/billing/view.js"></script>
-<script src="/onboard.js"></script>
+<script src="/components/onboard.js"></script>
 <script src="/features/brand/store.js"></script>
 <script src="/features/brand/view.js"></script>
 <script src="/features/creator/store.js"></script>
@@ -1508,7 +1516,7 @@
 <script src="/features/profile/view.js"></script>
 <script src="/features/version/store.js"></script>
 <script src="/features/version/view.js"></script>
-<script src="/sidebar.js"></script>
+<script src="/components/sidebar.js"></script>
 <script src="/vendor/qrcode/qrcode.min.js"></script>
 <script src="/features/share/store.js"></script>
 <script src="/features/share/view.js"></script>
