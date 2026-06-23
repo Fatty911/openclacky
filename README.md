@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square)](LICENSE.txt)
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="README_CN.md">简体中文</a>
+  <a href="README.md">English</a> · <a href="README_CN.md">简体中文</a> · <a href="README_JA.md">日本語</a>
 </p>
 
 > Contributing? Read **[CONTRIBUTING.md](./CONTRIBUTING.md)** before opening a PR.
