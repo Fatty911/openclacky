@@ -1292,9 +1292,9 @@
       </div>
 
       <!-- Secondary path: manual key entry, collapsed by default -->
-      <details id="setup-manual-details">
-        <summary id="setup-manual-summary" data-i18n="onboard.manual.toggle">Configure manually with your own API key</summary>
+      <button id="setup-manual-toggle" class="setup-manual-toggle-btn" data-i18n="onboard.manual.toggle">Configure manually with your own API key</button>
 
+      <div id="setup-manual-section" style="display:none">
       <div class="setup-field">
         <label class="setup-label" data-i18n="onboard.key.provider">Provider</label>
         <div class="custom-select-wrapper" id="setup-provider-wrapper">
@@ -1348,7 +1348,7 @@
         </div>
       </div>
 
-      <div class="setup-docs-hint" style="font-size:0.75rem;margin-top:2px;text-align:left;">
+      <div class="setup-docs-hint" style="font-size:0.75rem;margin-top:8px;margin-bottom:10px;text-align:left;">
         <span style="color:var(--muted,#6b7280);" data-i18n="onboard.key.docsGuide.question">New to AI keys?</span>
         <a id="setup-docs-link" href="https://www.openclacky.com/docs/ai-key-guide" target="_blank" rel="noopener" style="margin-left:0.25rem;color:var(--accent,#6366f1);text-decoration:none;" data-i18n="onboard.key.docsGuide.cta">See the guide →</a>
       </div>
@@ -1359,7 +1359,7 @@
         <button id="setup-btn-back" class="setup-back-btn" data-i18n="onboard.key.btn.back">← Back</button>
         <button id="setup-btn-test" class="setup-submit-btn" data-i18n="onboard.key.btn.test">Test & Continue →</button>
       </div>
-      </details>
+      </div>
     </div>
 
   </div>
