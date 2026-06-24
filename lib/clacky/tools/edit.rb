@@ -67,8 +67,20 @@ module Clacky
             }
           end
 
-          # Perform replacement
-          content = replace_all ? content.gsub(actual_old_string, new_string) : content.sub(actual_old_string, new_string)
+          # Perform literal replacement.
+          #
+          # NOTE: Use the block form (`sub(old) { new }`) instead of the
+          # two-arg form (`sub(old, new)`). The two-arg form interprets
+          # backslash escapes (\&, \1, \`, \', \\) in the replacement
+          # as sed-style backreferences, silently mangling literal
+          # backslashes and these escape sequences. The block form
+          # performs no such interpretation, matching the edit tool's
+          # literal-replacement contract.
+          content = if replace_all
+                      content.gsub(actual_old_string) { new_string }
+                    else
+                      content.sub(actual_old_string) { new_string }
+                    end
 
           File.write(path, content)
 
