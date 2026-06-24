@@ -4886,8 +4886,15 @@ module Clacky
         model    = body["model"].to_s.strip
         base_url = body["base_url"].to_s.strip
         api_key  = body["api_key"].to_s
-        # Masked placeholders are never a valid api_key on creation —
-        # a brand-new model MUST come with a real key.
+        # When duplicating, the frontend sends source_id so we can inherit the
+        # real key without ever transmitting it back to the client.
+        if api_key.empty? || api_key.include?("****")
+          source_id = body["source_id"].to_s
+          unless source_id.empty?
+            source  = @agent_config.models.find { |m| m["id"] == source_id }
+            api_key = source["api_key"].to_s if source
+          end
+        end
         if api_key.empty? || api_key.include?("****")
           return json_response(res, 422, { error: "api_key is required" })
         end
