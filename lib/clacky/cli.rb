@@ -268,8 +268,9 @@ module Clacky
           config.save
         end
 
-        # Refresh UI bar
+        # Refresh UI bar and model list
         ui_controller.config[:model] = config.model_name
+        ui_controller.available_models = config.model_names
         ui_controller.update_sessionbar(
           tasks: agent.total_tasks,
           cost: agent.total_cost
@@ -836,11 +837,12 @@ module Clacky
             say "Error: Rich UI requires Ruby >= 2.6. Use --ui ui2 on Ruby #{RUBY_VERSION}.", :red
             exit 1
           end
-          require_relative "rich_ui_controller"
+          require_relative "rich_ui"
           RichUIController.new(
             working_dir: working_dir,
             mode: agent_config.permission_mode.to_s,
             model: agent_config.model_name,
+            model_names: agent_config.model_names,
             theme: options[:theme]
           )
         else
@@ -901,6 +903,21 @@ module Clacky
           agent_config.permission_mode = new_mode.to_sym
         end
 
+        # Set up model switch handler (from /model slash command)
+        ui_controller.on_model_switch do |model, persist|
+          next unless agent_config.switch_model_by_name(model)
+
+          id = agent_config.current_model_id
+          agent.switch_model_by_id(id)
+          if persist
+            agent_config.set_default_model_by_id(id)
+            agent_config.save
+            ui_controller.show_success("Model switched to #{model} (saved)")
+          else
+            ui_controller.show_success("Model switched to #{model} (session only)")
+          end
+        end
+
         # Set up time machine handler (ESC key)
         ui_controller.on_time_machine do
           handle_time_machine_command(ui_controller, agent, session_manager)
@@ -921,6 +938,16 @@ module Clacky
           end
 
           if (not current_task_thread&.alive?) && input_was_empty
+            # Rich UI: require double-tap Ctrl+C to exit.  When the user
+            # just copied terminal-native text selection, the viewport
+            # has no knowledge of the selection, yet Ctrl+C must not exit.
+            # First press only sets the warning; second press exits.
+            if ui_controller.respond_to?(:ctrl_c_warning) && !ui_controller.ctrl_c_warning
+              ui_controller.instance_variable_set(:@ctrl_c_warning, "Press Ctrl+C again to exit")
+              ui_controller.set_input_tips("Press Ctrl+C again to exit.", type: :info)
+              next
+            end
+
             # Save final session state before exit
             if session_manager && agent.total_tasks > 0
               session_data = agent.to_session_data(status: :exited)
@@ -1038,7 +1065,13 @@ module Clacky
               # Update session bar with agent's cumulative stats
               ui_controller.update_sessionbar(tasks: agent.total_tasks, cost: agent.total_cost)
             rescue Clacky::AgentInterrupted, StandardError => e
-              handle_agent_exception(ui_controller, agent, session_manager, e)
+              begin
+                handle_agent_exception(ui_controller, agent, session_manager, e)
+              rescue StandardError => ex
+                # If handle_agent_exception itself raises (e.g. UI in bad state),
+                # prevent the thread from dying with an unhandled exception.
+                $stderr.puts "[cli] handle_agent_exception failed: #{ex.class}: #{ex.message}"
+              end
             ensure
               current_task_thread = nil
               # Start idle timer after agent completes
