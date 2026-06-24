@@ -4583,7 +4583,6 @@ body {
   font-size: 0.8125rem;
   color: var(--color-text-primary);
   cursor: pointer;
-  margin-top: 0.5rem;
 }
 .model-field-checkbox input[type="checkbox"] {
   width: 15px;
