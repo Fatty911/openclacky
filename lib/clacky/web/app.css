@@ -526,7 +526,7 @@ body {
 /* The sidebar sits on the outer frame (bg-primary) so it's visibly a layer
    BEHIND the chat surface (bg-secondary). Subtle right border separates them. */
 #sidebar {
-  --sidebar-width: 15rem;
+  --sidebar-width: 16rem;
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   background: var(--color-bg-primary);
@@ -1938,7 +1938,7 @@ body {
    the slot has no panels for the current agent it stays empty and the whole
    column collapses to zero width. */
 #session-aside {
-  --session-aside-width: 360px;
+  --session-aside-width: 16rem;
   width: var(--session-aside-width);
   flex-shrink: 0;
   position: relative;
