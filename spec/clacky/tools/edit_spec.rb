@@ -176,6 +176,110 @@ RSpec.describe Clacky::Tools::Edit do
     end
   end
 
+  describe "literal replacement (no backreference interpretation)" do
+    # Regression: prior to the block-form fix, String#sub(old, new) interpreted
+    # \&, \1, \`, \', \\ in new_string as sed-style backreferences, silently
+    # mangling literal backslashes and these escape sequences. The edit tool's
+    # contract is literal replacement, so these specs lock that down.
+  
+    it "preserves literal backslash-ampersand without expanding to whole match" do
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "br.txt")
+        File.write(file_path, "hello world")
+  
+        result = tool.execute(path: file_path, old_string: "world", new_string: "[\\&]")
+  
+        expect(result[:error]).to be_nil
+        expect(File.read(file_path)).to eq("hello [\\&]")
+      end
+    end
+  
+    it "preserves literal backslash-1 without expanding to capture group" do
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "br.txt")
+        File.write(file_path, "abc")
+  
+        result = tool.execute(path: file_path, old_string: "b", new_string: "\\1")
+  
+        expect(result[:error]).to be_nil
+        expect(File.read(file_path)).to eq("a\\1c")
+      end
+    end
+  
+    it "preserves a literal single backslash byte" do
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "br.txt")
+        File.write(file_path, "[/]")
+  
+        result = tool.execute(path: file_path, old_string: "[/]", new_string: "[/\\]")
+  
+        expect(result[:error]).to be_nil
+        expect(File.binread(file_path).bytes).to eq([0x5b, 0x2f, 0x5c, 0x5d])
+      end
+    end
+  
+    it "preserves literal double backslash" do
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "br.txt")
+        File.write(file_path, "x")
+  
+        result = tool.execute(path: file_path, old_string: "x", new_string: "\\\\")
+  
+        expect(result[:error]).to be_nil
+        expect(File.read(file_path)).to eq("\\\\")
+      end
+    end
+  
+    it "preserves literal backslash-ampersand across all occurrences with replace_all" do
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "br.txt")
+        File.write(file_path, "x x x")
+  
+        result = tool.execute(path: file_path, old_string: "x", new_string: "\\&", replace_all: true)
+  
+        expect(result[:error]).to be_nil
+        expect(result[:replacements]).to eq(3)
+        expect(File.read(file_path)).to eq("\\& \\& \\&")
+      end
+    end
+  
+    it "preserves literal backslash-1 across all occurrences with replace_all" do
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "br.txt")
+        File.write(file_path, "a a a")
+  
+        result = tool.execute(path: file_path, old_string: "a", new_string: "\\1", replace_all: true)
+  
+        expect(result[:error]).to be_nil
+        expect(File.read(file_path)).to eq("\\1 \\1 \\1")
+      end
+    end
+  
+    it "preserves literal single backslash across all occurrences with replace_all" do
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "br.txt")
+        File.write(file_path, "a a a")
+  
+        result = tool.execute(path: file_path, old_string: "a", new_string: "\\", replace_all: true)
+  
+        expect(result[:error]).to be_nil
+        expect(File.binread(file_path)).to eq("\\ \\ \\")
+      end
+    end
+  
+    it "preserves literal double backslash across all occurrences with replace_all" do
+      Dir.mktmpdir do |dir|
+        file_path = File.join(dir, "br.txt")
+        File.write(file_path, "a a")
+  
+        result = tool.execute(path: file_path, old_string: "a", new_string: "\\\\", replace_all: true)
+  
+        expect(result[:error]).to be_nil
+        expect(File.read(file_path)).to eq("\\\\ \\\\")
+      end
+    end
+  end
+  
   describe "#to_function_definition" do
     it "returns OpenAI function calling format" do
       definition = tool.to_function_definition
