@@ -79,7 +79,7 @@ Gem::Specification.new do |spec|
 
   # rouge 4.x requires Ruby >= 2.7; bundler auto-resolves to 3.x on older rubies
   spec.add_dependency "rouge", ">= 3.14", "< 5.0"
-  # spec.add_dependency "ruby_rich", "~> 0.4.7"
+  spec.add_dependency "ruby_rich", "~> 0.5.2"
   spec.add_dependency "chunky_png", "~> 1.4"
 
   # For more information and examples about making a new gem, check out our
