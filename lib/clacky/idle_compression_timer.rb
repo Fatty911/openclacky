@@ -121,7 +121,9 @@ module Clacky
       success = @agent.trigger_idle_compression
 
       if success && @session_manager
-        @session_manager.save(@agent.to_session_data(status: :success))
+        existing = @session_manager.load(@agent.session_id)
+        original_updated_at = existing&.dig(:updated_at) ? Time.parse(existing[:updated_at].to_s) : nil
+        @session_manager.save(@agent.to_session_data(status: :success, updated_at: original_updated_at))
       end
 
       @on_compress&.call(success)

@@ -17,6 +17,7 @@ module Clacky
         @total_cost = session_data.dig(:stats, :total_cost_usd) || 0.0
         @working_dir = session_data[:working_dir]
         @created_at = session_data[:created_at]
+        @persisted_updated_at = session_data[:updated_at]
         @total_tasks = session_data.dig(:stats, :total_tasks) || 0
         # Restore cost_source so frontend knows if cost is reliable
         cost_src = session_data.dig(:stats, :cost_source)
@@ -152,7 +153,7 @@ module Clacky
       # @param status [Symbol] Status of the last task: :success, :error, or :interrupted
       # @param error_message [String] Error message if status is :error
       # @return [Hash] Session data ready for serialization
-      def to_session_data(status: :success, error_message: nil)
+      def to_session_data(status: :success, error_message: nil, updated_at: nil, preserve_updated_at: false)
         stats_data = {
           total_tasks: @total_tasks,
           total_iterations: @iterations,
@@ -173,7 +174,7 @@ module Clacky
           name: @name,
           pinned: @pinned,
           created_at: @created_at,
-          updated_at: Time.now.iso8601,
+          updated_at: (updated_at || (preserve_updated_at && @persisted_updated_at) || Time.now.iso8601).then { |v| v.is_a?(String) ? v : v.iso8601 },
           working_dir: @working_dir,
           source: @source.to_s,                      # "manual" | "cron" | "channel" | "setup"
           agent_profile: @agent_profile&.name || "", # "general" | "coding" | custom
