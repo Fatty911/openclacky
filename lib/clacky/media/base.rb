@@ -51,6 +51,24 @@ module Clacky
         )
       end
 
+      def generate_transcription(audio_base64:, mime_type:, **_kwargs)
+        transcription_error_response(
+          error: "Speech-to-text is not supported by #{self.class.name.split("::").last}. Use the openclacky gateway with an STT model such as or-stt-gemini-3-5-flash.",
+          error_type: "not_implemented",
+          provider: ""
+        )
+      end
+
+      # @return [Hash] either video_understanding_success_response(...) or
+      #   video_understanding_error_response(...)
+      def understand_video(video_base64:, mime_type:, prompt: nil, **_kwargs)
+        video_understanding_error_response(
+          error: "Video understanding is not supported by #{self.class.name.split("::").last}. Use the openclacky gateway with a video understanding model such as or-gemini-3-5-flash.",
+          error_type: "not_implemented",
+          provider: ""
+        )
+      end
+
       # Persist a base64-encoded image under <output_dir>/assets/generated/.
       # Returns the absolute path on disk.
       private def save_b64_image(b64_data, output_dir:, prefix: "img", extension: "png")
@@ -185,6 +203,48 @@ module Clacky
           "model"      => @model,
           "input"      => input,
           "voice"      => voice,
+          "provider"   => provider
+        }
+      end
+
+      private def transcription_success_response(text:, provider:, extra: {})
+        {
+          "success"  => true,
+          "text"     => text,
+          "model"    => @model,
+          "provider" => provider
+        }.merge(extra)
+      end
+
+      private def transcription_error_response(error:, error_type: "provider_error", provider: "")
+        {
+          "success"    => false,
+          "text"       => nil,
+          "error"      => error,
+          "error_type" => error_type,
+          "model"      => @model,
+          "provider"   => provider
+        }
+      end
+
+      private def video_understanding_success_response(analysis:, prompt:, provider:, extra: {})
+        {
+          "success"  => true,
+          "analysis" => analysis,
+          "model"    => @model,
+          "prompt"   => prompt,
+          "provider" => provider
+        }.merge(extra)
+      end
+
+      private def video_understanding_error_response(error:, error_type: "provider_error", provider:, prompt: "")
+        {
+          "success"    => false,
+          "analysis"   => nil,
+          "error"      => error,
+          "error_type" => error_type,
+          "model"      => @model,
+          "prompt"     => prompt,
           "provider"   => provider
         }
       end

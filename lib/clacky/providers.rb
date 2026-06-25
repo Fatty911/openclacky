@@ -88,6 +88,30 @@ module Clacky
           "or-tts-gemini-2-5-pro"   => "Gemini 2.5 Pro TTS"
         },
         "default_audio_model" => "or-tts-gemini-2-5-flash",
+        # Speech-to-text models served by the openclacky gateway, which
+        # routes them to Vertex AI Gemini (generateContent with inline
+        # audio parts). The gateway returns transcription text.
+        "stt_models" => [
+          "or-stt-gemini-3-5-flash",
+          "or-stt-gemini-1-5-pro"
+        ],
+        "stt_model_aliases" => {
+          "or-stt-gemini-3-5-flash" => "Gemini 3.5 Flash STT",
+          "or-stt-gemini-1-5-pro"   => "Gemini 1.5 Pro STT"
+        },
+        "default_stt_model" => "or-stt-gemini-3-5-flash",
+        # Video understanding models served by the openclacky gateway, which
+        # routes video frames to Gemini (generateContent with inline image
+        # parts). The gateway returns analysis text.
+        "video_understanding_models" => [
+          "or-gemini-3-5-flash",
+          "or-gemini-3-1-pro"
+        ],
+        "video_understanding_model_aliases" => {
+          "or-gemini-3-5-flash" => "Gemini 3.5 Flash",
+          "or-gemini-3-1-pro"   => "Gemini 3.1 Pro"
+        },
+        "default_video_understanding_model" => "or-gemini-3-5-flash",
         # Default OCR sidecar — used when the primary model is text-only.
         # Candidates are derived from the provider's vision-capable models;
         # this just picks the cheap+fast default to surface in "auto" mode.
@@ -418,7 +442,7 @@ module Clacky
 
     }.freeze
 
-    MEDIA_KINDS = %w[image video audio].freeze
+    MEDIA_KINDS = %w[image video audio stt video_understanding].freeze
 
     class << self
       # Check if a provider preset exists
@@ -549,11 +573,33 @@ module Clacky
         preset&.dig("audio_model_aliases") || {}
       end
 
+      def stt_models(provider_id)
+        preset = PRESETS[provider_id]
+        preset&.dig("stt_models") || []
+      end
+
+      def stt_model_aliases(provider_id)
+        preset = PRESETS[provider_id]
+        preset&.dig("stt_model_aliases") || {}
+      end
+
+      def video_understanding_models(provider_id)
+        preset = PRESETS[provider_id]
+        preset&.dig("video_understanding_models") || []
+      end
+
+      def video_understanding_model_aliases(provider_id)
+        preset = PRESETS[provider_id]
+        preset&.dig("video_understanding_model_aliases") || {}
+      end
+
       def media_model_aliases(provider_id, kind)
         case kind.to_s
         when "image" then image_model_aliases(provider_id)
         when "video" then video_model_aliases(provider_id)
         when "audio" then audio_model_aliases(provider_id)
+        when "stt"   then stt_model_aliases(provider_id)
+        when "video_understanding" then video_understanding_model_aliases(provider_id)
         else {}
         end
       end
@@ -599,13 +645,15 @@ module Clacky
 
       # Unified entry for media model lookup by kind.
       # @param provider_id [String]
-      # @param kind [String] one of "image" / "video" / "audio"
+      # @param kind [String] one of "image" / "video" / "audio" / "stt"
       # @return [Array<String>]
       def media_models(provider_id, kind)
         case kind.to_s
         when "image" then image_models(provider_id)
         when "video" then video_models(provider_id)
         when "audio" then audio_models(provider_id)
+        when "stt"   then stt_models(provider_id)
+        when "video_understanding" then video_understanding_models(provider_id)
         else []
         end
       end

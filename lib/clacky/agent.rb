@@ -1288,6 +1288,37 @@ module Clacky
       @tool_registry.register(Tools::Browser.new)
     end
 
+    # Run a one-off task on a forked subagent and return its final reply text,
+    # WITHOUT mutating this (parent) agent's history. Used by extensions that
+    # need a side analysis (e.g. meeting annotate) which must reuse the parent's
+    # cached context + unified billing, but must NOT pollute the main conversation.
+    #
+    # The subagent deep-clones the parent history (cache prefix + task state), runs
+    # to completion, and is discarded. Only the cost is merged back into the parent.
+    #
+    # @param task [String] The task/prompt for the subagent
+    # @param model [String, nil] Model name ("lite" for the lite companion, nil = current)
+    # @param forbidden_tools [Array<String>] Tool names to block at runtime
+    # @return [String] Subagent's final assistant reply (empty string if none)
+    def run_detached(task, model: nil, forbidden_tools: [])
+      subagent = fork_subagent(
+        model: model,
+        forbidden_tools: forbidden_tools,
+        system_prompt_suffix: "You are running a one-off background analysis. Do the task and return only the requested output. Do not ask follow-up questions."
+      )
+      parent_count = subagent.instance_variable_get(:@parent_message_count) || 0
+      result = subagent.run(task)
+
+      @total_cost += result[:total_cost_usd] || 0.0
+
+      new_messages = subagent.history.to_a[parent_count..] || []
+      new_messages
+        .reverse
+        .find { |m| m[:role] == "assistant" && m[:content] && !m[:content].to_s.empty? }
+        &.dig(:content)
+        .to_s
+    end
+
     # Fork a subagent with specified configuration
     # The subagent inherits all messages and tools from parent agent
     # Tools are not modified (for cache reuse), but forbidden tools are blocked at runtime via hooks

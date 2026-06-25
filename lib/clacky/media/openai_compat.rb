@@ -3,6 +3,7 @@
 require "faraday"
 require "json"
 require "base64"
+require "securerandom"
 require_relative "base"
 
 module Clacky
@@ -296,6 +297,154 @@ module Clacky
         )
       end
 
+      def generate_transcription(audio_base64:, mime_type:, prompt: nil, **_kwargs)
+        provider_id = Clacky::Providers.find_by_base_url(@base_url) || "custom"
+
+        if @api_key.to_s.empty?
+          return transcription_error_response(
+            error: "api_key not configured for STT model '#{@model}'",
+            error_type: "auth_required", provider: provider_id
+          )
+        end
+
+        ext = mime_type.split(";").first.split("/").last.then { |e| e == "mpeg" ? "mp3" : e }
+        filename = "chunk.#{ext}"
+        audio_data = Base64.decode64(audio_base64)
+        boundary = "----FormBoundary#{SecureRandom.hex(8)}"
+        body = +""
+        body << "--#{boundary}\r\n"
+        body << "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n"
+        body << "Content-Type: #{mime_type.split(';').first}\r\n\r\n"
+        body << audio_data
+        body << "\r\n--#{boundary}\r\n"
+        body << "Content-Disposition: form-data; name=\"model\"\r\n\r\n"
+        body << @model
+        unless prompt.to_s.strip.empty?
+          body << "\r\n--#{boundary}\r\n"
+          body << "Content-Disposition: form-data; name=\"prompt\"\r\n\r\n"
+          body << prompt.to_s.strip
+        end
+        body << "\r\n--#{boundary}--\r\n"
+
+        begin
+          response = stt_connection.post("audio/transcriptions") do |req|
+            req.headers["Content-Type"]  = "multipart/form-data; boundary=#{boundary}"
+            req.headers["Authorization"] = "Bearer #{@api_key}"
+            req.body = body
+          end
+        rescue Faraday::Error => e
+          return transcription_error_response(
+            error: "HTTP request failed: #{e.message}",
+            error_type: "network_error", provider: provider_id
+          )
+        end
+
+        unless response.success?
+          return transcription_error_response(
+            error: "Upstream #{response.status}: #{truncate(response.body, 500)}",
+            error_type: "api_error", provider: provider_id
+          )
+        end
+
+        parsed = parse_json(response.body)
+        unless parsed.is_a?(Hash)
+          return transcription_error_response(
+            error: "Invalid JSON response from upstream",
+            error_type: "invalid_response", provider: provider_id
+          )
+        end
+
+        transcription_success_response(
+          text: parsed["text"].to_s.strip,
+          provider: provider_id,
+          extra: {
+            "usage"    => parsed["usage"],
+            "cost_usd" => parsed["cost_usd"]
+          }.compact
+        )
+      end
+
+      def understand_video(video_base64:, mime_type:, prompt: nil, **_kwargs)
+        provider_id = Clacky::Providers.find_by_base_url(@base_url) || "custom"
+        prompt = "Describe what you see in this frame." if prompt.to_s.strip.empty?
+
+        if @api_key.to_s.empty?
+          return video_understanding_error_response(
+            error: "api_key not configured for video understanding model '#{@model}'",
+            error_type: "auth_required", provider: provider_id, prompt: prompt
+          )
+        end
+
+        data_url = "data:#{mime_type};base64,#{video_base64}"
+
+        payload = {
+          model: @model,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: data_url } }
+              ]
+            }
+          ]
+        }
+
+        begin
+          response = vu_connection.post("chat/completions") do |req|
+            req.headers["Content-Type"]  = "application/json"
+            req.headers["Authorization"] = "Bearer #{@api_key}"
+            req.body = JSON.generate(payload)
+          end
+        rescue Faraday::Error => e
+          return video_understanding_error_response(
+            error: "HTTP request failed: #{e.message}",
+            error_type: "network_error", provider: provider_id, prompt: prompt
+          )
+        end
+
+        unless response.success?
+          return video_understanding_error_response(
+            error: "Upstream #{response.status}: #{truncate(response.body, 500)}",
+            error_type: "api_error", provider: provider_id, prompt: prompt
+          )
+        end
+
+        parsed = parse_json(response.body)
+        unless parsed.is_a?(Hash)
+          return video_understanding_error_response(
+            error: "Invalid JSON response from upstream",
+            error_type: "invalid_response", provider: provider_id, prompt: prompt
+          )
+        end
+
+        choices = parsed["choices"]
+        if choices.nil? || choices.empty?
+          return video_understanding_error_response(
+            error: "Upstream returned no content",
+            error_type: "empty_response", provider: provider_id, prompt: prompt
+          )
+        end
+
+        text = choices.first.dig("message", "content").to_s.strip
+        if text.empty?
+          return video_understanding_error_response(
+            error: "Upstream returned empty analysis",
+            error_type: "empty_response", provider: provider_id, prompt: prompt
+          )
+        end
+
+        video_understanding_success_response(
+          analysis: text,
+          prompt: prompt,
+          provider: provider_id,
+          extra: {
+            "usage"    => parsed["usage"],
+            "cost_usd" => parsed["cost_usd"]
+          }.compact
+        )
+      end
+
       private def connection
         Faraday.new(url: normalized_base_url) do |f|
           f.options.timeout      = 240
@@ -316,6 +465,20 @@ module Clacky
       private def audio_connection
         Faraday.new(url: normalized_base_url) do |f|
           f.options.timeout      = 120
+          f.options.open_timeout = 10
+        end
+      end
+
+      private def stt_connection
+        Faraday.new(url: normalized_base_url) do |f|
+          f.options.timeout      = 30
+          f.options.open_timeout = 10
+        end
+      end
+
+      private def vu_connection
+        Faraday.new(url: normalized_base_url) do |f|
+          f.options.timeout      = 60
           f.options.open_timeout = 10
         end
       end

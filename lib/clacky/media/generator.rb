@@ -124,6 +124,58 @@ module Clacky
         )
       end
 
+      def stt_model_entry
+        @agent_config.find_model_by_type("stt")
+      end
+
+      def video_understanding_model_entry
+        @agent_config.find_model_by_type("video_understanding")
+      end
+
+      def generate_transcription(audio_base64:, mime_type:, **kwargs)
+        entry = stt_model_entry
+        if entry.nil?
+          return {
+            "success"    => false,
+            "text"       => nil,
+            "error"      => "No STT model configured. Add a model with type=stt in settings.",
+            "error_type" => "not_configured",
+            "provider"   => "",
+            "model"      => ""
+          }
+        end
+
+        provider = build_provider_for(entry)
+        provider.generate_transcription(
+          audio_base64: audio_base64,
+          mime_type: mime_type,
+          **kwargs
+        )
+      end
+
+      def understand_video(video_base64:, mime_type:, prompt: nil, **kwargs)
+        entry = video_understanding_model_entry
+        if entry.nil?
+          return {
+            "success"    => false,
+            "analysis"   => nil,
+            "error"      => "No video understanding model configured. Add a model with type=video_understanding in settings.",
+            "error_type" => "not_configured",
+            "provider"   => "",
+            "model"      => "",
+            "prompt"     => prompt
+          }
+        end
+
+        provider = build_provider_for(entry)
+        provider.understand_video(
+          video_base64: video_base64,
+          mime_type: mime_type,
+          prompt: prompt,
+          **kwargs
+        )
+      end
+
       # Pick the adapter class for a media model entry.
       #
       # Routing rules:

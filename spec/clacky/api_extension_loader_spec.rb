@@ -26,7 +26,7 @@ RSpec.describe Clacky::ApiExtensionLoader do
         end
       RUBY
 
-      result = described_class.load_all(dir: tmp)
+      result = described_class.load_all(dir: tmp, builtin: false)
 
       expect(result.loaded).to eq(["my-dashboard"])
       expect(result.skipped).to be_empty
@@ -47,7 +47,7 @@ RSpec.describe Clacky::ApiExtensionLoader do
 
       make_ext("broken", handler_rb: "class Broken < Clacky::ApiExtension\n  get '/x' do  # missing end\n")
 
-      result = described_class.load_all(dir: tmp)
+      result = described_class.load_all(dir: tmp, builtin: false)
 
       expect(result.loaded).to include("good")
       expect(result.skipped.map(&:first)).to include("broken")
@@ -55,7 +55,7 @@ RSpec.describe Clacky::ApiExtensionLoader do
 
     it "skips an extension that does not define a Clacky::ApiExtension subclass" do
       make_ext("empty", handler_rb: "puts 'no class here'\n")
-      result = described_class.load_all(dir: tmp)
+      result = described_class.load_all(dir: tmp, builtin: false)
       expect(result.skipped.map(&:first)).to include("empty")
     end
 
@@ -64,7 +64,7 @@ RSpec.describe Clacky::ApiExtensionLoader do
         class NoRoutesLoaderTestExt < Clacky::ApiExtension
         end
       RUBY
-      result = described_class.load_all(dir: tmp)
+      result = described_class.load_all(dir: tmp, builtin: false)
       expect(result.skipped.map(&:first)).to include("no-routes")
     end
 
@@ -77,7 +77,7 @@ RSpec.describe Clacky::ApiExtensionLoader do
           end
         end
       RUBY
-      result = described_class.load_all(dir: tmp)
+      result = described_class.load_all(dir: tmp, builtin: false)
       reasons = result.skipped.to_h
       expect(reasons["webhook"]).to match(/public_endpoint/)
     end
@@ -91,13 +91,13 @@ RSpec.describe Clacky::ApiExtensionLoader do
           end
         end
       RUBY
-      result = described_class.load_all(dir: tmp)
+      result = described_class.load_all(dir: tmp, builtin: false)
       expect(result.loaded).to include("webhook2")
     end
 
     it "skips directories starting with underscore (e.g. _disabled)" do
       make_ext("_disabled/foo", handler_rb: "raise 'should not load'\n")
-      result = described_class.load_all(dir: tmp)
+      result = described_class.load_all(dir: tmp, builtin: false)
       expect(result.loaded).to be_empty
       expect(result.skipped).to be_empty
     end

@@ -441,14 +441,26 @@ module Clacky
 
     # Load default skills from gem's default_skills directory
     private def load_default_skills
-      # Get the gem's lib directory
       gem_lib_dir = File.expand_path("../", __dir__)
       default_skills_dir = File.join(gem_lib_dir, "clacky", "default_skills")
 
       return unless Dir.exist?(default_skills_dir)
 
-      # Load each skill directory
       Dir.glob(File.join(default_skills_dir, "*/SKILL.md")).each do |skill_file|
+        skill_dir = File.dirname(skill_file)
+        skill_name = File.basename(skill_dir)
+
+        begin
+          skill = Skill.new(Pathname.new(skill_dir))
+          register_skill(skill, source: :default)
+        rescue StandardError => e
+          @errors << "Failed to load default skill #{skill_name}: #{e.message}"
+        end
+      end
+
+      # Also load skills bundled inside default_extensions/*/skills/
+      ext_skills_dir = File.join(gem_lib_dir, "clacky", "default_extensions")
+      Dir.glob(File.join(ext_skills_dir, "*/skills/*/SKILL.md")).each do |skill_file|
         skill_dir = File.dirname(skill_file)
         skill_name = File.basename(skill_dir)
 

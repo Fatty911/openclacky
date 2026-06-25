@@ -368,6 +368,8 @@ module Clacky
             res.body                  = html
           elsif req.path.start_with?("/webui_ext/")
             self.send(:serve_webui_ext, req, res)
+          elsif req.path.start_with?("/builtin_ext/")
+            self.send(:serve_builtin_ext, req, res)
           elsif req.path.start_with?("/agent_ui/")
             self.send(:serve_agent_ui, req, res)
           elsif req.path.start_with?("/panel_ui/")
@@ -462,6 +464,10 @@ module Clacky
           600
         elsif path == "/api/media/audio/speech"
           120
+        elsif path == "/api/media/audio/transcriptions"
+          30
+        elsif path == "/api/media/video/understand"
+          60
         elsif path.start_with?("/api/backup/download") || path == "/api/backup/run"
           # Building a tar.gz of ~/.clacky (with session history) can take a while.
           120
@@ -549,6 +555,8 @@ module Clacky
         when ["POST",   "/api/media/image"]       then api_media_image(req, res)
         when ["POST",   "/api/media/video"]       then api_media_video(req, res)
         when ["POST",   "/api/media/audio/speech"] then api_media_audio_speech(req, res)
+        when ["POST",   "/api/media/audio/transcriptions"] then api_media_audio_transcriptions(req, res)
+        when ["POST",   "/api/media/video/understand"]     then api_media_video_understand(req, res)
         when ["GET",    "/api/media/types"]       then api_media_types(res)
         when ["GET",    "/api/version"]           then api_get_version(res)
         when ["POST",   "/api/version/upgrade"]   then api_upgrade_version(req, res)
@@ -677,7 +685,7 @@ module Clacky
           elsif method == "DELETE" && path.match?(%r{^/api/config/models/[^/]+$})
             id = path.sub("/api/config/models/", "")
             api_delete_model(id, res)
-          elsif method == "PATCH" && path.match?(%r{^/api/config/media/(image|video|audio)$})
+          elsif method == "PATCH" && path.match?(%r{^/api/config/media/(image|video|audio|stt|video_understanding)$})
             kind = path.sub("/api/config/media/", "")
             api_update_media_config(kind, req, res)
           elsif method == "POST" && path.match?(%r{^/api/cron-tasks/[^/]+/run$})
@@ -1033,6 +1041,9 @@ module Clacky
       # Absolute path to the user's WebUI extension directory.
       WEBUI_EXT_ROOT = File.expand_path("~/.clacky/webui_ext")
 
+      # Built-in extensions bundled with the gem (default_extensions/*/**.js).
+      BUILTIN_EXT_ROOT = File.expand_path("../default_extensions", __dir__)
+
       # Build the full <script> payload injected at {{EXT_SCRIPTS}}:
       #   1. global extensions   — ~/.clacky/webui_ext/**/*.js  (all agents)
       #   2. agent-scoped UI     — agents/<name>/webui/**/*.js   (data-agent)
@@ -1042,6 +1053,7 @@ module Clacky
       private def webui_ext_script_tags
         [
           panel_agents_script,
+          builtin_ext_script_tags,
           global_ext_script_tags,
           agent_webui_script_tags,
           official_panel_script_tags,
@@ -1091,6 +1103,21 @@ module Clacky
           end
         end
         dirs
+      end
+
+      # Built-in extensions from default_extensions/*/*.js — loaded before user
+      # extensions so user ~/.clacky/webui_ext/ can override by ext id.
+      private def builtin_ext_script_tags
+        return "" unless Dir.exist?(BUILTIN_EXT_ROOT)
+
+        Dir.glob(File.join(BUILTIN_EXT_ROOT, "*", "**", "*.js")).sort.map do |abs|
+          rel    = abs.delete_prefix(BUILTIN_EXT_ROOT + "/")
+          ext_id = "builtin/" + rel.delete_suffix(".js")
+          src    = "/builtin_ext/#{rel}"
+          "<script>Clacky.ext._extBegin(#{ext_id.to_json}, #{nil.to_json}, #{nil.to_json})</script>" \
+            "<script src=#{src.to_json} data-ext-id=#{ext_id.to_json}></script>" \
+            "<script>Clacky.ext._extEnd()</script>"
+        end.join("\n")
       end
 
       # Global extensions — visible for all agents (unchanged legacy behavior).
@@ -1160,6 +1187,31 @@ module Clacky
         ext = File.extname(abs)
         ctype = { ".js" => "application/javascript", ".css" => "text/css",
                   ".html" => "text/html; charset=utf-8" }[ext]
+        unless ctype
+          res.status = 415
+          res.body   = "unsupported media type"
+          return
+        end
+
+        res.status           = 200
+        res["Content-Type"]  = ctype
+        res["Cache-Control"] = "no-store"
+        res["Pragma"]        = "no-cache"
+        res.body             = File.read(abs)
+      end
+
+      private def serve_builtin_ext(req, res)
+        rel = req.path.delete_prefix("/builtin_ext/")
+        abs = File.expand_path(File.join(BUILTIN_EXT_ROOT, rel))
+
+        unless abs.start_with?(BUILTIN_EXT_ROOT + File::SEPARATOR) && File.file?(abs)
+          res.status = 404
+          res.body   = "not found"
+          return
+        end
+
+        ext = File.extname(abs)
+        ctype = { ".js" => "application/javascript", ".css" => "text/css" }[ext]
         unless ctype
           res.status = 415
           res.body   = "unsupported media type"
@@ -1398,6 +1450,59 @@ module Clacky
         )
         if result["success"]
           log_media_usage(result, prompt: input)
+        end
+        status = result["success"] ? 200 : 422
+        json_response(res, status, result)
+      rescue StandardError => e
+        json_response(res, 500, { error: e.message })
+      end
+
+      def api_media_audio_transcriptions(req, res)
+        body = parse_json_body(req)
+        return json_response(res, 400, { error: "Invalid JSON" }) unless body
+
+        audio_b64 = body["audio_base64"].to_s
+        if audio_b64.empty?
+          return json_response(res, 422, { error: "audio_base64 is required" })
+        end
+
+        mime_type = body["mime_type"].to_s
+        mime_type = "audio/webm" if mime_type.empty?
+
+        result = Clacky::Media::Generator.new(@agent_config).generate_transcription(
+          audio_base64: audio_b64,
+          mime_type: mime_type
+        )
+        if result["success"]
+          Clacky::Logger.info("[Media] stt generated model=#{result["model"]} provider=#{result["provider"]} cost_usd=#{result["cost_usd"].to_f}")
+        end
+        status = result["success"] ? 200 : 422
+        json_response(res, status, result)
+      rescue StandardError => e
+        json_response(res, 500, { error: e.message })
+      end
+
+      def api_media_video_understand(req, res)
+        body = parse_json_body(req)
+        return json_response(res, 400, { error: "Invalid JSON" }) unless body
+
+        video_b64 = body["video_base64"].to_s
+        if video_b64.empty?
+          return json_response(res, 422, { error: "video_base64 is required" })
+        end
+
+        mime_type = body["mime_type"].to_s
+        mime_type = "image/png" if mime_type.empty?
+
+        prompt = body["prompt"].to_s
+
+        result = Clacky::Media::Generator.new(@agent_config).understand_video(
+          video_base64: video_b64,
+          mime_type: mime_type,
+          prompt: prompt
+        )
+        if result["success"]
+          Clacky::Logger.info("[Media] video_understanding generated model=#{result["model"]} provider=#{result["provider"]} cost_usd=#{result["cost_usd"].to_f}")
         end
         status = result["success"] ? 200 : 422
         json_response(res, status, result)
@@ -5829,16 +5934,27 @@ module Clacky
         return unless @registry.exist?(session_id)
 
         session = @registry.get(session_id)
-        prompt      = session[:pending_task]
-        working_dir = session[:pending_working_dir]
+        prompt          = session[:pending_task]
+        working_dir     = session[:pending_working_dir]
+        display_message = session[:pending_display_message]
         return unless prompt  # nothing pending
 
         # Clear the pending fields so a re-connect doesn't re-run
-        @registry.update(session_id, pending_task: nil, pending_working_dir: nil)
+        @registry.update(session_id, pending_task: nil, pending_working_dir: nil, pending_display_message: nil)
 
         agent = nil
         @registry.with_session(session_id) { |s| agent = s[:agent] }
         return unless agent
+
+        # Surface a user message on screen before the agent starts thinking, so
+        # programmatically-submitted tasks (e.g. meeting summarization) don't
+        # appear as a thinking spinner with no preceding message. When a short
+        # display_message is provided we show that instead of the full prompt.
+        if display_message
+          web_ui = nil
+          @registry.with_session(session_id) { |s| web_ui = s[:ui] }
+          web_ui&.show_user_message(display_message, source: :web)
+        end
 
         run_agent_task(session_id, agent) { agent.run(prompt) }
       end

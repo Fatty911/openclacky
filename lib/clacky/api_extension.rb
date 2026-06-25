@@ -238,6 +238,67 @@ module Clacky
       @http_server&.instance_variable_get(:@agent_config)
     end
 
+    def registry
+      @http_server&.instance_variable_get(:@registry)
+    end
+
+    # Submit a prompt to an existing session for execution.
+    # The session must be idle; returns the session_id on success.
+    # Raises Halt (409) if the session is already running.
+    def submit_task(session_id, prompt, display_message: nil)
+      reg = registry
+      error!("server not ready", status: 503) unless reg
+
+      unless reg.exist?(session_id)
+        reg.ensure(session_id)
+        error!("session not found: #{session_id}", status: 404) unless reg.exist?(session_id)
+      end
+
+      session = reg.get(session_id)
+      error!("session is busy", status: 409) if session[:status] == :running
+
+      reg.update(session_id, pending_task: prompt, pending_display_message: display_message, pending_working_dir: nil)
+      @http_server.send(:start_pending_task, session_id)
+      session_id
+    end
+
+    # Run a one-off side task on an existing session's agent and return its
+    # reply text SYNCHRONOUSLY, without polluting the main conversation.
+    #
+    # Unlike submit_task (which enqueues a turn into the live conversation and
+    # returns immediately), this forks the session's agent — reusing its cached
+    # context and unified billing — runs the task to completion on the fork, and
+    # returns the fork's final reply. The main conversation is never touched.
+    #
+    # Strategy A (parent-busy → skip): if the session is currently running, or the
+    # server is at its concurrency limit, this returns { busy: true } without
+    # running. Callers (e.g. periodic analysis) should treat that as "try later".
+    #
+    # @param session_id [String]
+    # @param prompt [String]
+    # @param model [String, nil] "lite" for the lite companion, nil = current
+    # @param forbidden_tools [Array<String>] tool names blocked in the fork
+    # @return [Hash] { text: "..." } on success, or { busy: true } when skipped
+    def dispatch_to_session(session_id, prompt, model: nil, forbidden_tools: [])
+      reg = registry
+      error!("server not ready", status: 503) unless reg
+
+      unless reg.exist?(session_id)
+        reg.ensure(session_id)
+        error!("session not found: #{session_id}", status: 404) unless reg.exist?(session_id)
+      end
+
+      return { busy: true } if reg.respond_to?(:running_full?) && reg.running_full?
+
+      session = reg.get(session_id)
+      return { busy: true } if session[:status] == :running
+
+      agent = session[:agent]
+      error!("session agent not available", status: 503) unless agent
+
+      { text: agent.run_detached(prompt, model: model, forbidden_tools: forbidden_tools) }
+    end
+
     def server_start_time
       @http_server&.instance_variable_get(:@start_time)
     end

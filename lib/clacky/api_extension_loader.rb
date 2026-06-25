@@ -12,15 +12,27 @@ module Clacky
   # isolated: skipped with a logged warning, never aborts the load of others.
   module ApiExtensionLoader
     DEFAULT_DIR  = File.expand_path("~/.clacky/api_ext")
+    BUILTIN_DIR  = File.expand_path("../default_extensions", __FILE__)
     DISABLED_DIR = "_disabled"
 
     Result = Struct.new(:loaded, :skipped, keyword_init: true)
 
     class << self
-      def load_all(dir: DEFAULT_DIR)
+      def load_all(dir: DEFAULT_DIR, builtin: true)
         result = Result.new(loaded: [], skipped: [])
         Clacky::ApiExtension.reset_registry!
 
+        # Load built-in (gem-shipped) extensions first (lowest priority)
+        if builtin && Dir.exist?(BUILTIN_DIR)
+          Dir.glob(File.join(BUILTIN_DIR, "*", "handler.rb")).sort.each do |handler_path|
+            ext_dir = File.dirname(handler_path)
+            ext_id  = File.basename(ext_dir)
+            next if ext_id.start_with?("_")
+            load_one(ext_id, ext_dir, handler_path, result)
+          end
+        end
+
+        # Load user extensions (higher priority — same ext_id overwrites built-in)
         if Dir.exist?(dir)
           Dir.glob(File.join(dir, "*", "handler.rb")).sort.each do |handler_path|
             ext_dir = File.dirname(handler_path)

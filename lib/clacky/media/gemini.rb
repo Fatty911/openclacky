@@ -41,6 +41,15 @@ module Clacky
           aspect_ratio: aspect_ratio
         )
       end
+
+      def understand_video(video_base64:, mime_type:, prompt: nil, **_kwargs)
+        video_understanding_error_response(
+          error: "Direct Google AI Studio video understanding is not supported. Use the openclacky gateway (base_url https://api.openclacky.com) with a video understanding model such as or-gemini-3-5-flash.",
+          error_type: "not_implemented",
+          provider: "gemini-direct",
+          prompt: prompt || ""
+        )
+      end
     end
   end
 end
