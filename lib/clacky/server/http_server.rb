@@ -692,6 +692,12 @@ module Clacky
           elsif method == "PATCH" && path.match?(%r{^/api/skills/[^/]+/toggle$})
             name = URI.decode_www_form_component(path.sub("/api/skills/", "").sub("/toggle", ""))
             api_toggle_skill(name, req, res)
+          elsif method == "GET" && path.match?(%r{^/api/skills/[^/]+/content$})
+            name = URI.decode_www_form_component(path.sub("/api/skills/", "").sub("/content", ""))
+            api_skill_content_get(name, res)
+          elsif method == "PUT" && path.match?(%r{^/api/skills/[^/]+/content$})
+            name = URI.decode_www_form_component(path.sub("/api/skills/", "").sub("/content", ""))
+            api_skill_content_update(name, req, res)
           elsif method == "DELETE" && path.match?(%r{^/api/skills/[^/]+$})
             name = URI.decode_www_form_component(path.sub("/api/skills/", ""))
             api_delete_skill(name, res)
@@ -3942,6 +3948,47 @@ module Clacky
         json_response(res, 200, { ok: true, name: skill.identifier, enabled: !skill.disabled? })
       rescue Clacky::AgentError => e
         json_response(res, 422, { error: e.message })
+      end
+
+      private def api_skill_content_get(name, res)
+        @skill_loader.load_all
+        skill = @skill_loader[name]
+        return json_response(res, 404, { ok: false, error: "Skill not found: #{name}" }) unless skill
+
+        skill_md = File.join(skill.directory.to_s, "SKILL.md")
+        unless File.exist?(skill_md)
+          return json_response(res, 404, { ok: false, error: "SKILL.md not found" })
+        end
+
+        json_response(res, 200, {
+          ok:      true,
+          name:    skill.identifier,
+          content: File.read(skill_md),
+          path:    skill_md
+        })
+      end
+
+      private def api_skill_content_update(name, req, res)
+        @skill_loader.load_all
+        skill = @skill_loader[name]
+        return json_response(res, 404, { ok: false, error: "Skill not found: #{name}" }) unless skill
+
+        if skill.source_path.nil? || @skill_loader.loaded_from[skill.identifier] == :default
+          return json_response(res, 403, { ok: false, error: "System skills cannot be edited" })
+        end
+
+        data    = parse_json_body(req)
+        content = data["content"].to_s
+        skill_md = File.join(skill.directory.to_s, "SKILL.md")
+        unless File.exist?(skill_md)
+          return json_response(res, 404, { ok: false, error: "SKILL.md not found" })
+        end
+
+        File.write(skill_md, content)
+        @skill_loader.load_all
+        json_response(res, 200, { ok: true, name: skill.identifier })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
       end
 
       private def api_delete_skill(name, res)

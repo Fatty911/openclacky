@@ -6701,24 +6701,14 @@ body {
   white-space: nowrap;
 }
 .brand-skill-version.installed {
-  background: #1f3a5f;
-  color: #7eb8f7;
-  border: 1px solid #1d4070;
+  background: color-mix(in srgb, var(--color-accent-primary) 15%, transparent);
+  color: var(--color-accent-primary);
+  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 35%, transparent);
 }
 .brand-skill-version.latest {
-  background: #1f4e9e;
-  color: #bfdbfe;
-  border: 1px solid #1d4070;
-}
-[data-theme="light"] .brand-skill-version.installed {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
-}
-[data-theme="light"] .brand-skill-version.latest {
-  background: #1d4ed8;
+  background: var(--color-accent-primary);
   color: #ffffff;
-  border: 1px solid #1e40af;
+  border: 1px solid var(--color-accent-primary);
 }
 .brand-skill-update-arrow {
   color: var(--color-text-secondary);
@@ -6798,17 +6788,11 @@ body {
   border-color: var(--color-accent-primary);
 }
 .btn-brand-update {
-  background: #1f4e9e;
-  color: #bfdbfe;
-  border: 1px solid #1d4070;
-}
-.btn-brand-update:hover { background: #1a3f85; }
-[data-theme="light"] .btn-brand-update {
-  background: #1d4ed8;
+  background: var(--color-accent-primary);
   color: #ffffff;
-  border: 1px solid #1e40af;
+  border: 1px solid var(--color-accent-primary);
 }
-[data-theme="light"] .btn-brand-update:hover { background: #1e40af; }
+.btn-brand-update:hover { background: var(--color-accent-hover); }
 .btn-brand-install:disabled,
 .btn-brand-update:disabled {
   opacity: 0.5;
@@ -6848,6 +6832,22 @@ body {
   color: var(--color-error, #c0392b);
   border-color: var(--color-error-border, #f5c6c6);
   background: var(--color-error-bg, #fff0f0);
+}
+.btn-skill-edit {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.btn-skill-edit:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-primary);
+  background: var(--color-bg-hover);
 }
 
 
