@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2026-06-25
+
+### Added
+- Skill edit UI with brand skill theme colors
+- WebUI language preference propagated to backend for localized error messages
+- Edit message resend with confirmation modal and localStorage key normalization
+- Duplicate model card action
+- i18n support for aside tab labels (files/git/time-machine)
+- File picker defaults to workspace with mkdir/rename support and hardened validation
+- API extensions and EPIPE rebuild client handling
+- Ruby Rich enhancement and refactoring (runtime dependency added)
+
+### Improved
+- Default aside panel to collapsed; sidebar widths aligned to 16rem
+- Onboarding manual config UX and spacing improvements
+- Fixed positioning for modal model/baseurl dropdowns to avoid overflow clipping
+- Disable transition during aside resize drag
+- Rename resetAfterUnbind to resetBrandState to avoid view/store collision
+
+### Fixed
+- Edit tool performs literal replacement (C-5682)
+- Shield code spans before math extraction to prevent LaTeX rendering (C-5635)
+- Preserve updated_at on idle compression and session eviction; fix Today/Yesterday display bug
+- Remove media output dir UI setting — always use session workspace
+- Test: stub req.path and req.request_method in check_access_key loopback bypass spec
+
 ## [1.3.3] - 2026-06-23
 
 ### Added
