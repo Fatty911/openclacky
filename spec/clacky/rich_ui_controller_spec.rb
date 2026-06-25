@@ -223,7 +223,7 @@ RSpec.describe Clacky::RichUIController do
     it "falls back to OSC 52 terminal clipboard when platform clipboard commands are unavailable" do
       ui = described_class.new(working_dir: Dir.pwd, mode: "confirm_safes", model: "test-model")
       allow(RubyRich::Terminal).to receive(:windows?).and_return(false)
-      allow(ui.shell.viewport).to receive(:clacky_clipboard_commands).and_return([])
+      allow(ui.shell.viewport).to receive(:clipboard_commands).and_return([])
       allow($stdout).to receive(:print)
       allow($stdout).to receive(:flush)
 
