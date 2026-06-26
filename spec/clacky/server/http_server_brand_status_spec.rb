@@ -101,7 +101,8 @@ RSpec.describe Clacky::Server::HttpServer, "GET /api/brand/status" do
         distribution_refresh_due?: false,
         product_name:              "JohnAI",
         homepage_url:              "https://johnai.com",
-        logo_url:                  "https://johnai.com/logo.png")
+        logo_url:                  "https://johnai.com/logo.png",
+        theme_color:               nil)
       allow(Clacky::BrandConfig).to receive(:load).and_return(brand)
 
       res = fake_res
