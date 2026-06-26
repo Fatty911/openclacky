@@ -1967,6 +1967,7 @@ module Clacky
             product_name:                  brand.product_name,
             homepage_url:                  brand.homepage_url,
             logo_url:                      brand.logo_url,
+            theme_color:                   brand.theme_color,
             test_mode:                     @brand_test,
             distribution_refresh_pending:  refresh_pending
           })
@@ -2038,7 +2039,8 @@ module Clacky
             ok:            true,
             product_name:  result[:product_name] || brand.product_name,
             user_id:       result[:user_id] || brand.license_user_id,
-            user_licensed: brand.user_licensed?
+            user_licensed: brand.user_licensed?,
+            theme_color:   brand.theme_color
           })
         else
           json_response(res, 422, { ok: false, error: result[:message] })

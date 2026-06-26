@@ -11019,6 +11019,49 @@ body.setup-mode[data-theme="dark"] {
   color: var(--color-error, #d33);
 }
 
+/* ── Accent Color Swatches ───────────────────────────────────────────── */
+.settings-accent-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.settings-accent-swatch {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s;
+  outline: none;
+  position: relative;
+}
+
+.settings-accent-swatch:hover {
+  transform: scale(1.15);
+}
+
+.settings-accent-swatch.active::after {
+  content: "";
+  position: absolute;
+  width: 0.375rem;
+  height: 0.625rem;
+  border-right: 0.125rem solid white;
+  border-bottom: 0.125rem solid white;
+  top: 46%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.swatch-indigo         { background: #4f46e5; }
+.swatch-aurora-blue    { background: #3B82F6; }
+.swatch-forest-green   { background: #10B981; }
+.swatch-sunrise-orange { background: #F59E0B; }
+.swatch-rose-violet    { background: #8B5CF6; }
+.swatch-coral-red      { background: #EF4444; }
+
 /* ── Sessions List ───────────────────────────────────────────────────── */
 .billing-sessions-row {
   margin-top: 1rem;
