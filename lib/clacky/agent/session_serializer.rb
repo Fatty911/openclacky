@@ -153,7 +153,7 @@ module Clacky
       # @param status [Symbol] Status of the last task: :success, :error, or :interrupted
       # @param error_message [String] Error message if status is :error
       # @return [Hash] Session data ready for serialization
-      def to_session_data(status: :success, error_message: nil, updated_at: nil, preserve_updated_at: false)
+      def to_session_data(status: :success, error_message: nil, raw_message: nil, updated_at: nil, preserve_updated_at: false)
         stats_data = {
           total_tasks: @total_tasks,
           total_iterations: @iterations,
@@ -167,7 +167,8 @@ module Clacky
         }
 
         # Add error message if status is error
-        stats_data[:last_error] = error_message if status == :error && error_message
+        stats_data[:last_error]     = error_message if status == :error && error_message
+        stats_data[:last_error_raw] = raw_message   if status == :error && raw_message
 
         {
           session_id: @session_id,

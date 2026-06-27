@@ -641,35 +641,34 @@ module Clacky
         raise InsufficientCreditError.new(
           "[LLM] #{I18n.t("llm.error.insufficient_credit")}",
           error_code: "insufficient_credit",
-          provider_id: @provider_id
+          provider_id: @provider_id,
+          raw_message: error_message
         )
       end
 
       case response.status
       when 400
-        # Well-behaved APIs (Anthropic, OpenAI) never put quota/availability issues in 400.
-        # However, some proxy/relay providers do — so we inspect the message first.
-        # Also, Bedrock returns ThrottlingException as 400 instead of 429.
         if error_message.match?(/ThrottlingException|unavailable|quota/i)
           raise RetryableError, "[LLM] #{I18n.t("llm.error.rate_limit_400")}"
         end
 
-        # True bad request — our message was malformed. Roll back history so the
-        # broken message is not replayed on the next user turn.
         raise BadRequestError.new(
           "[LLM] Client request error: #{error_message}",
-          display_message: "[LLM] #{I18n.t("llm.error.bad_request")}"
+          display_message: "[LLM] #{I18n.t("llm.error.bad_request")}",
+          raw_message: error_message
         )
-      when 401 then raise AgentError, "[LLM] #{I18n.t("llm.error.invalid_api_key")}"
+      when 401
+        raise AgentError.new("[LLM] #{I18n.t("llm.error.invalid_api_key")}", raw_message: error_message)
       when 403
         i18n_key = "llm.error.403.#{error_code}"
         translated = I18n.t(i18n_key)
         translated = I18n.t("llm.error.403.default") if translated == i18n_key
-        raise AgentError, "[LLM] #{translated}"
-      when 404 then raise AgentError, "[LLM] #{I18n.t("llm.error.endpoint_not_found")}"
+        raise AgentError.new("[LLM] #{translated}", raw_message: error_message)
+      when 404
+        raise AgentError.new("[LLM] #{I18n.t("llm.error.endpoint_not_found")}", raw_message: error_message)
       when 429 then raise RetryableError, "[LLM] #{I18n.t("llm.error.rate_limit_429")}"
       when 500..599 then raise RetryableError, "[LLM] #{I18n.t("llm.error.server_error", status: response.status)}"
-      else raise AgentError, "[LLM] #{I18n.t("llm.error.unexpected", status: response.status)}"
+      else raise AgentError.new("[LLM] #{I18n.t("llm.error.unexpected", status: response.status)}", raw_message: error_message)
       end
     end
 

@@ -331,7 +331,7 @@ module Clacky
       @shell.add_system_message("Warning: #{message}")
     end
 
-    def show_error(message)
+    def show_error(message, **)
       @shell.add_error_message(message.to_s)
     end
 

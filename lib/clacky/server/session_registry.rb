@@ -44,6 +44,7 @@ module Clacky
           error:                nil,
           error_code:           nil,
           top_up_url:           nil,
+          raw_message:          nil,
           updated_at:           nil,
           agent:                nil,
           ui:                   nil,
@@ -169,7 +170,7 @@ module Clacky
             live_name  = s[:agent]&.name
             live_name  = nil if live_name&.empty?
           live_cost_source = s[:agent]&.cost_source
-          { status: s[:status], error: s[:error], error_code: s[:error_code], top_up_url: s[:top_up_url],
+          { status: s[:status], error: s[:error], error_code: s[:error_code], top_up_url: s[:top_up_url], raw_message: s[:raw_message],
             updated_at: s[:updated_at]&.iso8601,
             model: model_info&.dig(:model), model_id: model_info&.dig(:id), name: live_name,
             total_tasks: s[:agent]&.total_tasks, total_cost: s[:agent]&.total_cost,
@@ -269,7 +270,7 @@ module Clacky
           model_info = s[:agent]&.current_model_info
           live_name  = s[:agent]&.name
           live_name  = nil if live_name&.empty?
-          { status: s[:status], error: s[:error], error_code: s[:error_code], top_up_url: s[:top_up_url],
+          { status: s[:status], error: s[:error], error_code: s[:error_code], top_up_url: s[:top_up_url], raw_message: s[:raw_message],
             updated_at: s[:updated_at]&.iso8601,
             model: model_info&.dig(:model), model_id: model_info&.dig(:id),
             name: live_name, total_tasks: s[:agent]&.total_tasks,
@@ -296,6 +297,7 @@ module Clacky
           error:         ls ? ls[:error] : nil,
           error_code:    ls&.dig(:error_code),
           top_up_url:    ls&.dig(:top_up_url),
+          raw_message:   ls&.dig(:raw_message),
           model:         ls&.dig(:model),
           model_id:      ls&.dig(:model_id),
           card_model:    ls&.dig(:card_model),

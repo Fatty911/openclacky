@@ -5923,10 +5923,11 @@ module Clacky
             top_up_url = preset && preset["website_url"]
           end
           user_message = e.respond_to?(:display_message) && e.display_message ? e.display_message : e.message
-          @registry.update(session_id, status: :error, error: user_message, error_code: code, top_up_url: top_up_url)
+          raw_message  = e.respond_to?(:raw_message) ? e.raw_message : nil
+          @registry.update(session_id, status: :error, error: user_message, error_code: code, top_up_url: top_up_url, raw_message: raw_message)
           broadcast_session_update(session_id)
-          web_ui&.show_error(user_message, code: code, top_up_url: top_up_url)
-          @session_manager.save(agent.to_session_data(status: :error, error_message: user_message))
+          web_ui&.show_error(user_message, code: code, top_up_url: top_up_url, raw_message: raw_message)
+          @session_manager.save(agent.to_session_data(status: :error, error_message: user_message, raw_message: raw_message))
         end
         @registry.with_session(session_id) { |s| s[:thread] = thread }
       end

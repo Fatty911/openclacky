@@ -874,7 +874,7 @@ module Clacky
 
       # Show error message
       # @param message [String] Error message
-      def show_error(message, code: nil, top_up_url: nil)
+      def show_error(message, code: nil, top_up_url: nil, raw_message: nil)
         output = @renderer.render_error(message)
         append_output(output)
       end

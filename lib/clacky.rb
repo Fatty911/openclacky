@@ -155,20 +155,27 @@ require_relative "clacky/server/api_extension_dispatcher"
 
 module Clacky
   class AgentInterrupted < Exception; end  # Inherit from Exception to bypass rescue StandardError
-  class AgentError < StandardError; end
+  class AgentError < StandardError
+    attr_reader :raw_message
+
+    def initialize(message, raw_message: nil)
+      super(message)
+      @raw_message = raw_message
+    end
+  end
   class BadRequestError < AgentError
     attr_reader :display_message
 
-    def initialize(message, display_message: nil)
-      super(message)
+    def initialize(message, display_message: nil, raw_message: nil)
+      super(message, raw_message: raw_message)
       @display_message = display_message
     end
   end
   class InsufficientCreditError < AgentError
     attr_reader :error_code, :provider_id
 
-    def initialize(message, error_code: nil, provider_id: nil)
-      super(message)
+    def initialize(message, error_code: nil, provider_id: nil, raw_message: nil)
+      super(message, raw_message: raw_message)
       @error_code = error_code
       @provider_id = provider_id
     end

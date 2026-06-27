@@ -101,7 +101,7 @@ module Clacky
       emit("warning", message: message)
     end
 
-    def show_error(message, code: nil, top_up_url: nil)
+    def show_error(message, code: nil, top_up_url: nil, raw_message: nil)
       payload = { message: message }
       payload[:code] = code if code
       payload[:top_up_url] = top_up_url if top_up_url

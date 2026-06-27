@@ -230,12 +230,13 @@ module Clacky
         @broadcaster.call(@session_id, event)
       end
 
-      def show_error(message, code: nil, top_up_url: nil)
+      def show_error(message, code: nil, top_up_url: nil, raw_message: nil)
         payload = { message: message }
         payload[:code] = code if code
         payload[:top_up_url] = top_up_url if top_up_url
+        payload[:raw_message] = raw_message if raw_message
         emit("error", **payload)
-        forward_to_subscribers { |sub| sub.show_error(message, code: code, top_up_url: top_up_url) }
+        forward_to_subscribers { |sub| sub.show_error(message, code: code, top_up_url: top_up_url, raw_message: raw_message) }
       end
 
       def show_success(message)
