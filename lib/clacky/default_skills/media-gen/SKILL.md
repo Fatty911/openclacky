@@ -242,6 +242,69 @@ it in documents with a relative path under `./assets/generated/`.
 Same shape and `error_type` values as image generation, but with `"video": null`.
 `not_configured` means no `type=video` model is set up.
 
+### Continuous / long video (last-frame chaining)
+
+A single Veo call maxes out at 8 seconds, and separate calls are visually
+**unrelated** (the character, lighting and framing jump between clips). To make
+several clips flow as one continuous shot, chain them: take the **last frame**
+of clip N and feed it as the `image` (first frame) of clip N+1. Veo's
+image-to-video then continues from exactly where the previous clip ended, so
+the seam is smooth.
+
+Use the helper script (it only does the ffmpeg mechanics — you drive the
+generation with the same `/api/media/video` curl as above). The script's
+absolute path is given in the **Supporting Files** block; assign it once:
+
+```bash
+SEQ="SKILL_DIR/scripts/video_seq.sh"   # SKILL_DIR is provided in Supporting Files
+# subcommands: lastframe | tob64 | payload | concat | probe
+```
+
+Workflow for an N-segment continuous video:
+
+1. **Plan the shots.** Split the story into 4–8s beats. Write one prompt per
+   beat; each prompt should describe the *continuation*, e.g. "The same girl
+   keeps walking forward, the camera pushes in…". Keep subject, style and
+   lighting wording consistent across prompts.
+2. **Segment 1** — normal text-to-video call. Save the returned mp4 path.
+3. **Extract its last frame** (as JPEG — keep the `.jpg` extension):
+   ```bash
+   "$SEQ" lastframe seg1.mp4 /tmp/seg1_last.jpg
+   ```
+4. **Segment 2** — build the request body with `payload`, then post it with
+   `curl --data @file`. **Do NOT inline the base64 into `-d "{…}"`** — a frame's
+   base64 is ~150KB+ and overflows the shell's argument limit ("Argument list
+   too long"). The `payload` subcommand reads the frame, base64-encodes it, and
+   writes a ready-to-send JSON file:
+   ```bash
+   "$SEQ" payload /tmp/seg2.json /tmp/seg1_last.jpg 8 landscape "$OUT_DIR" \
+     "Continuing the same scene, the camera keeps pushing forward…"
+   curl -s -X POST .../api/media/video -H "Content-Type: application/json" \
+     --data @/tmp/seg2.json
+   ```
+   (`payload <out.json> <frame> <duration_seconds> <aspect_ratio> <output_dir> <prompt>`)
+5. **Repeat** steps 3–4 for each subsequent segment, always chaining off the
+   *previous* segment's last frame.
+6. **Stitch** all clips in order into one file:
+   ```bash
+   "$SEQ" concat final.mp4 seg1.mp4 seg2.mp4 seg3.mp4
+   ```
+
+Rules & caveats:
+
+- **Strictly sequential.** Generate one segment, wait for it, extract its
+  frame, then start the next. Never run two video generations at once.
+- **Keep prompts consistent.** The image carries visual continuity, but the
+  prompt must not contradict it (don't switch the subject or scene mid-chain
+  unless you intend a cut).
+- **Aspect ratio must match** across all segments, or `concat` falls back to a
+  slower re-encode (and may letterbox). Use the same `aspect_ratio` everywhere.
+- **Cost adds up linearly** — N segments ≈ N × single-clip price. Confirm the
+  number of segments and total length with the user before starting.
+- For >30s or a true single-take >8s with no seam at all, this client-side
+  chaining is the practical option today; Veo's native server-side `extend`
+  (148s) is not wired into this endpoint yet.
+
 ## Generating speech (Gemini TTS)
 
 The same `/api/media/` namespace serves text-to-speech. The user must

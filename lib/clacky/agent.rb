@@ -5,6 +5,7 @@ require "json"
 require "cgi"
 require "tty-prompt"
 require "set"
+require_relative "null_ui_controller"
 require_relative "utils/arguments_parser"
 require_relative "utils/file_processor"
 require_relative "utils/environment_detector"
@@ -1306,6 +1307,10 @@ module Clacky
         forbidden_tools: forbidden_tools,
         system_prompt_suffix: "You are running a one-off background analysis. Do the task and return only the requested output. Do not ask follow-up questions."
       )
+      # Detached runs must stay invisible: a real UI (e.g. WebUIController bound
+      # to the parent's session_id) would broadcast the subagent's raw output
+      # into the parent chat transcript. Swap in a no-op UI so nothing leaks.
+      subagent.instance_variable_set(:@ui, NullUIController.new)
       parent_count = subagent.instance_variable_get(:@parent_message_count) || 0
       result = subagent.run(task)
 

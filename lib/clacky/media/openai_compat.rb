@@ -311,20 +311,23 @@ module Clacky
         filename = "chunk.#{ext}"
         audio_data = Base64.decode64(audio_base64)
         boundary = "----FormBoundary#{SecureRandom.hex(8)}"
-        body = +""
-        body << "--#{boundary}\r\n"
-        body << "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n"
-        body << "Content-Type: #{mime_type.split(';').first}\r\n\r\n"
-        body << audio_data
-        body << "\r\n--#{boundary}\r\n"
-        body << "Content-Disposition: form-data; name=\"model\"\r\n\r\n"
-        body << @model
+        # A multipart body is a byte stream: build it in binary so UTF-8 text
+        # parts (e.g. a non-ASCII vocabulary prompt) don't clash with the
+        # ASCII-8BIT audio bytes.
+        body = "".b
+        body << "--#{boundary}\r\n".b
+        body << "Content-Disposition: form-data; name=\"file\"; filename=\"#{filename}\"\r\n".b
+        body << "Content-Type: #{mime_type.split(';').first}\r\n\r\n".b
+        body << audio_data.b
+        body << "\r\n--#{boundary}\r\n".b
+        body << "Content-Disposition: form-data; name=\"model\"\r\n\r\n".b
+        body << @model.to_s.b
         unless prompt.to_s.strip.empty?
-          body << "\r\n--#{boundary}\r\n"
-          body << "Content-Disposition: form-data; name=\"prompt\"\r\n\r\n"
-          body << prompt.to_s.strip
+          body << "\r\n--#{boundary}\r\n".b
+          body << "Content-Disposition: form-data; name=\"prompt\"\r\n\r\n".b
+          body << prompt.to_s.strip.b
         end
-        body << "\r\n--#{boundary}--\r\n"
+        body << "\r\n--#{boundary}--\r\n".b
 
         begin
           response = stt_connection.post("audio/transcriptions") do |req|
