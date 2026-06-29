@@ -326,7 +326,7 @@ module Clacky
               print "\e[?25l"
               return :cancelled
             when "\u0015"  # Ctrl+U - clear line
-              buffer = ''
+              buffer = String.new
               cursor_pos = 0
             else
               # Regular character input
