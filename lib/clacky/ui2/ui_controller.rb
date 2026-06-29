@@ -17,7 +17,7 @@ module Clacky
       include Clacky::UIInterface
 
       attr_reader :layout, :renderer, :running, :inline_input, :input_area
-      attr_accessor :config
+      attr_accessor :config, :available_models
 
       def initialize(config = {})
         @renderer = ViewRenderer.new
