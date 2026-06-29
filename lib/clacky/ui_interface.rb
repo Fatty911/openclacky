@@ -131,6 +131,15 @@ module Clacky
     # === Blocking interaction ===
     def request_confirmation(message, default: true); end
 
+    # Auto-approve countdown for request_user_feedback. Shows a live countdown
+    # and lets the user press a key to take over and answer. Returns :timeout
+    # when no one intervenes (agent should auto-decide and continue), or a
+    # feedback string / "" when the user steps in. Non-interactive UIs (web,
+    # json, channel) have no human watching a TTY, so they default to :timeout.
+    def request_feedback_with_countdown(seconds: 10)
+      :timeout
+    end
+
     # === Input control (CLI layer) ===
     def clear_input; end
     def set_input_tips(message, type: :info); end

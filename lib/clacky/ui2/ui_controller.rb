@@ -38,6 +38,7 @@ module Clacky
         @todo_area = Components::TodoArea.new
         @welcome_banner = Components::WelcomeBanner.new
         @inline_input = nil  # Created when needed
+        @feedback_countdown = nil  # Active auto-approve feedback countdown session
         @layout = LayoutManager.new(
           input_area: @input_area,
           todo_area: @todo_area
@@ -1054,6 +1055,99 @@ module Clacky
         end
       end
 
+      # Auto-approve countdown for request_user_feedback: show a single live
+      # countdown line. If the user presses any key before timeout, collect
+      # their answer and return it (intervention). Otherwise return :timeout so
+      # the agent auto-decides and continues.
+      # @param seconds [Integer] Countdown duration
+      # @return [String, Symbol] feedback string, "" (bare Enter), or :timeout
+      # Show a live single-line countdown in the output area while keeping the
+      # normal input box usable. The agent thread blocks here until either:
+      #   * the user submits a message in the regular input box -> returns the text
+      #   * the user starts typing (cancels the auto-timeout but keeps waiting)
+      #   * the countdown reaches zero with no interaction -> returns :timeout
+      # @param seconds [Integer] Countdown duration
+      # @return [String, Symbol] feedback text, or :timeout
+      def request_feedback_with_countdown(seconds: 10)
+        theme = ThemeManager.current_theme
+
+        queue = Queue.new
+        entry_id = @layout.append_output(countdown_prompt(seconds, theme))
+
+        session = {
+          queue: queue,
+          entry_id: entry_id,
+          intervened: false,
+          watchdog: nil
+        }
+        @feedback_countdown = session
+
+        session[:watchdog] = Thread.new do
+          remaining = seconds.to_i
+          while remaining.positive?
+            break if session[:intervened]
+
+            @layout.replace_entry(entry_id, countdown_prompt(remaining, theme))
+            sleep 1
+            remaining -= 1
+          end
+          queue.push(:timeout) unless session[:intervened]
+        end
+
+        result = queue.pop
+        session[:watchdog].kill if session[:watchdog]&.alive?
+        @feedback_countdown = nil
+        @layout.remove_entry(entry_id) if entry_id
+        @layout.recalculate_layout
+        @layout.render_all
+
+        if result == :timeout
+          append_output(theme.format_text("  No response — continuing automatically.", :thinking))
+        elsif result.to_s.strip.empty?
+          append_output(theme.format_text("  → (continue)", :success))
+          result = ""
+        end
+
+        result
+      end
+
+      # Cancel the countdown's auto-timeout when the user starts interacting,
+      # but keep waiting for their submitted answer. Returns true if a
+      # countdown was active.
+      private def intervene_feedback_countdown
+        session = @feedback_countdown
+        return false unless session && !session[:intervened]
+
+        session[:intervened] = true
+        session[:watchdog].kill if session[:watchdog]&.alive?
+        if session[:entry_id]
+          @layout.remove_entry(session[:entry_id])
+          session[:entry_id] = nil
+          @layout.recalculate_layout
+          @layout.render_all
+        end
+        true
+      end
+
+      private def countdown_prompt(remaining, theme)
+        theme.format_text("  Auto-continuing in #{remaining}s — type your answer to step in…", :info)
+      end
+
+      # Whether a keystroke should count as the user stepping into a countdown.
+      # Plain typing and pastes do; pure scroll/navigation keys do not.
+      private def countdown_intervening_key?(key)
+        case key
+        when Hash
+          key[:type] == :rapid_input
+        when String
+          key.length >= 1 && key.ord >= 32
+        when :backspace, :enter
+          true
+        else
+          false
+        end
+      end
+
       # Show diff between old and new content
       # @param old_content [String] Old content
       # @param new_content [String] New content
@@ -1206,7 +1300,7 @@ module Clacky
       # Check if API key is configured and show warning if missing
       private def check_api_key_configuration
         config = Clacky::AgentConfig.load
-        
+
         if !config.models_configured?
           show_warning("No models configured! Please run /config to set up your models and API keys.")
         elsif config.api_key.nil? || config.api_key.empty?
@@ -1250,7 +1344,7 @@ module Clacky
         while @running
           # Process any pending resize events
           @layout.process_pending_resize
-          
+
           key = @layout.screen.read_key(timeout: 0.1)
           next unless key
 
@@ -1289,6 +1383,13 @@ module Clacky
         if @inline_input&.active?
           handle_inline_input_key(key)
           return
+        end
+
+        # During an auto-approve feedback countdown the normal input box stays
+        # live; the first meaningful keystroke cancels the auto-timeout so the
+        # user can finish typing their answer without being rushed.
+        if @feedback_countdown && !@feedback_countdown[:intervened] && countdown_intervening_key?(key)
+          intervene_feedback_countdown
         end
 
         result = @input_area.handle_key(key)
@@ -1416,6 +1517,14 @@ module Clacky
           append_output(output)
         end
 
+        # If an auto-approve feedback countdown is waiting for an answer, this
+        # submission IS that answer — deliver it to the waiting agent thread
+        # instead of starting a brand-new turn.
+        if (session = @feedback_countdown)
+          session[:queue].push(data[:text].to_s)
+          return
+        end
+
         # Then call callback (allows interrupting previous agent before processing new input)
         @input_callback&.call(data[:text], data[:files])
       end
@@ -1425,31 +1534,31 @@ module Clacky
       # @return [Hash, nil] Hash with updated config values, or nil if cancelled
       public def show_config_modal(current_config, test_callback: nil)
         modal = Components::ModalComponent.new
-        
+
         loop do
           # Build menu choices
           choices = []
-          
+
           # Add model list
           current_config.models.each_with_index do |model, idx|
             is_current = (idx == current_config.current_model_index)
             model_name = model["model"] || "unnamed"
             masked_key = mask_api_key(model["api_key"])
-            
+
             # Add type badge if present
             type_badge = case model["type"]
                         when "default" then "[default] "
                         when "lite" then "[lite] "
                         else ""
                         end
-            
+
             display_name = "#{type_badge}#{model_name} (#{masked_key})"
             choices << {
               name: display_name,
               value: { action: :switch, model_id: model["id"] }
             }
           end
-          
+
           # Add action buttons
           choices << { name: "─" * 50, disabled: true }
           choices << { name: "[+] Add New Model", value: { action: :add } }
@@ -1458,16 +1567,16 @@ module Clacky
             choices << { name: "[-] Delete Model", value: { action: :delete } } if current_config.models.length > 1
           end
           choices << { name: "[X] Close", value: { action: :close } }
-          
+
           # Show menu
           result = modal.show(
-            title: "Model Configuration", 
+            title: "Model Configuration",
             choices: choices,
             on_close: -> { @layout.rerender_all }
           )
-          
+
           return nil if result.nil?
-          
+
           case result[:action]
           when :switch
             # Just signal the caller which model to switch to.
@@ -1699,16 +1808,16 @@ module Clacky
 
         result # Return selected task_id or nil
       end
-      
+
       # Show form for editing a model
       # @param model [Hash, nil] Existing model hash or nil for new model
       # @return [Hash, nil] Updated model hash or nil if cancelled
       private def show_model_edit_form(model, test_callback: nil)
         modal = Components::ModalComponent.new
-        
+
         is_new = model.nil?
         model ||= {}
-        
+
         # For new models, show provider selection first
         selected_provider = nil
         if is_new
@@ -1718,32 +1827,32 @@ module Clacky
           end
           provider_choices << { name: "─" * 40, disabled: true }
           provider_choices << { name: "Custom (manual configuration)", value: "custom" }
-          
+
           # Show provider selection
           selected_provider = modal.show(
             title: "Select Provider",
             choices: provider_choices,
             on_close: -> { @layout.rerender_all }
           )
-          
+
           # User cancelled
           return nil if selected_provider.nil?
         end
-        
+
         # Prepare masked API key for display
         masked_key = mask_api_key(model["api_key"])
-        
+
         # Pre-fill values from provider preset if selected
         provider_preset = nil
         if selected_provider && selected_provider != "custom"
           provider_preset = Clacky::Providers.get(selected_provider)
         end
-        
+
         # Get default values from provider or existing model
         default_model = provider_preset ? provider_preset["default_model"] : model["model"]
         default_base_url = provider_preset ? provider_preset["base_url"] : model["base_url"]
         default_api_key = model["api_key"] || ""
-        
+
         # Define fields
         fields = [
           {
@@ -1763,7 +1872,7 @@ module Clacky
             default: default_base_url || ""
           }
         ]
-        
+
         # Create validator if test_callback provided
         validator = if test_callback
           lambda do |values|
@@ -1772,14 +1881,14 @@ module Clacky
             model_name = values[:model].to_s.empty? ? model["model"] : values[:model]
             base_url = values[:base_url].to_s.empty? ? model["base_url"] : values[:base_url]
             anthropic_format = model["anthropic_format"] # Not editable in form, use model's value
-            
+
             test_config_values = {
               "api_key" => api_key,
               "model" => model_name,
               "base_url" => base_url,
               "anthropic_format" => anthropic_format
             }
-            
+
             # For new models, require all fields
             if is_new
               if test_config_values["api_key"].to_s.empty?
@@ -1792,7 +1901,7 @@ module Clacky
                 return { success: false, error: "Base URL is required" }
               end
             end
-            
+
             # Create a temporary config for testing
             temp_config = Clacky::AgentConfig.new(models: [test_config_values], current_model_index: 0)
             test_callback.call(temp_config)
@@ -1800,7 +1909,7 @@ module Clacky
         else
           nil
         end
-        
+
         # Determine modal title based on provider
         modal_title = if is_new && selected_provider && selected_provider != "custom"
           provider_name = Clacky::Providers.get(selected_provider)&.dig("name") || selected_provider
@@ -1810,7 +1919,7 @@ module Clacky
         else
           "Edit Model"
         end
-        
+
         # Show modal and collect values
         result = modal.show(
           title: modal_title,
@@ -1818,9 +1927,9 @@ module Clacky
           validator: validator,
           on_close: -> { @layout.rerender_all }
         )
-        
+
         return nil if result.nil?
-        
+
         # Merge with existing model values or provider defaults
         {
           api_key: result[:api_key].to_s.empty? ? model["api_key"] : result[:api_key],
@@ -1829,7 +1938,7 @@ module Clacky
           provider: selected_provider
         }
       end
-      
+
       # Mask API key for display
       private def mask_api_key(api_key)
         if api_key && !api_key.empty?

@@ -242,6 +242,27 @@ module Clacky
       @http_server&.instance_variable_get(:@registry)
     end
 
+    # Create a brand-new session and optionally kick off its first task.
+    # Returns the new session_id. When a prompt is given, the task is
+    # submitted immediately (the session starts running); display_message
+    # controls the user-facing bubble shown in place of the raw prompt.
+    def create_session(name: nil, prompt: nil, working_dir: nil, profile: "general",
+                       source: :manual, display_message: nil)
+      error!("server not ready", status: 503) unless @http_server
+
+      session_id = @http_server.send(
+        :build_session,
+        name: name,
+        working_dir: working_dir,
+        profile: profile,
+        source: source
+      )
+
+      submit_task(session_id, prompt, display_message: display_message) if prompt && !prompt.strip.empty?
+
+      session_id
+    end
+
     # Submit a prompt to an existing session for execution.
     # The session must be idle; returns the session_id on success.
     # Raises Halt (409) if the session is already running.
@@ -257,8 +278,7 @@ module Clacky
       session = reg.get(session_id)
       error!("session is busy", status: 409) if session[:status] == :running
 
-      reg.update(session_id, pending_task: prompt, pending_display_message: display_message, pending_working_dir: nil)
-      @http_server.send(:start_pending_task, session_id)
+      @http_server.send(:run_session_task, session_id, prompt, display_message: display_message)
       session_id
     end
 

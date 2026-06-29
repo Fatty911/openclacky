@@ -2456,6 +2456,36 @@ body {
   .msg-copy-btn { opacity: 0.65; }
 }
 
+/* ── Inline "start" button on unchecked task-list items ──────────────────── */
+.msg-assistant li.task-list-item { position: relative; }
+.msg-todo-spawn {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 5px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  vertical-align: middle;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.msg-assistant:hover .msg-todo-spawn,
+.msg-todo-spawn:focus-visible { opacity: 1; }
+.msg-todo-spawn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border-secondary);
+}
+.msg-todo-spawn:disabled { opacity: 0.5; cursor: default; }
+@media (hover: none) {
+  .msg-todo-spawn { opacity: 0.7; }
+}
+
 /* ── Markdown rendering inside assistant messages ────────────────────────── */
 .msg-assistant p:last-child { margin-bottom: 0; }
 .msg-assistant h1, .msg-assistant h2, .msg-assistant h3,

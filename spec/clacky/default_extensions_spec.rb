@@ -77,12 +77,10 @@ RSpec.describe "ApiExtension#submit_task" do
   it "submits task to an idle session" do
     allow(registry).to receive(:exist?).with("sess-1").and_return(true)
     allow(registry).to receive(:get).with("sess-1").and_return({ status: :idle })
-    allow(registry).to receive(:update).with("sess-1", pending_task: "do stuff", pending_display_message: nil, pending_working_dir: nil)
-    allow(http_server).to receive(:send).with(:start_pending_task, "sess-1")
+    allow(http_server).to receive(:send).with(:run_session_task, "sess-1", "do stuff", display_message: nil)
 
     result = instance.submit_task("sess-1", "do stuff")
     expect(result).to eq("sess-1")
-    expect(registry).to have_received(:update).with("sess-1", pending_task: "do stuff", pending_display_message: nil, pending_working_dir: nil)
   end
 
   it "raises 409 if session is already running" do

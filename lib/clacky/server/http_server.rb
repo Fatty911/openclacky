@@ -5927,6 +5927,22 @@ module Clacky
         Clacky::Logger.error("[interrupt] force_close_session_sockets error: #{e.class}: #{e.message}")
       end
 
+      # Run a task in a session immediately in the background, without waiting
+      # for the client to subscribe. The user bubble is persisted via
+      # display_text (Agent#run → history → replay_history), so the frontend
+      # only needs to navigate over and load history — no realtime broadcast,
+      # no subscribe-timing race. This is the stable entry point for
+      # programmatic "create session + run now" flows (spawn, extensions).
+      def run_session_task(session_id, prompt, display_message: nil)
+        return unless @registry.exist?(session_id)
+
+        agent = nil
+        @registry.with_session(session_id) { |s| agent = s[:agent] }
+        return unless agent
+
+        run_agent_task(session_id, agent) { agent.run(prompt, display_text: display_message) }
+      end
+
       # Start the pending task for a session.
       # Called when the client sends "run_task" over WS — by that point the
       # client has already subscribed, so every broadcast will be delivered.
@@ -5956,7 +5972,7 @@ module Clacky
           web_ui&.show_user_message(display_message, source: :web)
         end
 
-        run_agent_task(session_id, agent) { agent.run(prompt) }
+        run_agent_task(session_id, agent) { agent.run(prompt, display_text: display_message) }
       end
 
       # Interrupt every running agent thread and persist its session state.

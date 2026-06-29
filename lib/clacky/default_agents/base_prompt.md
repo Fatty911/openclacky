@@ -9,6 +9,7 @@
 
 - **ALWAYS use `glob` tool to find files — NEVER use shell `find` command for file discovery**
 - **All operations default to the working directory** (shown in session context)
+- **NEVER write tool calls as text** (e.g. `<invoke name=...>`, `<function_calls>`). Use the structured tool_calls field — text won't execute.
 
 ## Response Style
 

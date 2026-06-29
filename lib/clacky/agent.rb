@@ -24,6 +24,7 @@ require_relative "agent/memory_updater"
 require_relative "agent/skill_evolution"
 require_relative "agent/skill_reflector"
 require_relative "agent/skill_auto_creator"
+require_relative "agent/fake_tool_call_detector"
 
 module Clacky
   class Agent
@@ -40,6 +41,7 @@ module Clacky
     include SkillEvolution
     include SkillReflector
     include SkillAutoCreator
+    include FakeToolCallDetector
 
     attr_reader :session_id, :name, :history, :iterations, :total_cost, :working_dir, :created_at, :total_tasks, :todos,
                 :cache_stats, :cost_source, :ui, :skill_loader, :agent_profile,
@@ -275,6 +277,7 @@ module Clacky
       else
         @start_time = Time.now
         @task_truncation_count = 0  # Reset truncation counter for each task
+        @task_fake_tool_call_count = 0  # Reset fake tool-call counter for each task
         @task_timeout_hint_injected = false  # Reset read-timeout hint injection (see LlmCaller)
         @task_upstream_truncation_hint_injected = false  # Reset upstream-truncation hint injection (see LlmCaller)
         @task_cost_source = :estimated  # Reset for new task
@@ -487,6 +490,18 @@ module Clacky
             end
           rescue StandardError => e
             Clacky::Logger.warn("agent.think_response.log_failed", error: e.message)
+          end
+
+          # Detect fake tool-calls written as XML/text in content (model bug
+          # where it emits `<invoke name="...">` instead of using the
+          # structured tool_calls field). Only triggers when tool_calls is
+          # absent — a real call alongside stray XML is not our problem here.
+          if (response[:tool_calls].nil? || response[:tool_calls].empty?) &&
+             fake_tool_call_in_content?(response[:content])
+            case handle_fake_tool_call(response)
+            when :retry then next
+            when :stop then break
+            end
           end
 
           # Check if done (no more tool calls needed).
@@ -950,10 +965,9 @@ module Clacky
         end
 
         # Special handling for request_user_feedback
-        if call[:name] == "request_user_feedback"
-          # In auto_approve mode, give user time to see and cancel before auto-answering
-          auto_approve_countdown(seconds: 10) if @config.permission_mode == :auto_approve
-        else
+        # The interactive countdown (auto_approve) is handled after the tool
+        # executes, once the question itself has been rendered to the user.
+        unless call[:name] == "request_user_feedback"
           @ui&.show_tool_call(call[:name], redact_tool_args(call[:arguments]))
         end
 
@@ -1038,11 +1052,26 @@ module Clacky
             @ui&.show_tool_call(call[:name], call[:arguments])
 
             if @config.permission_mode == :auto_approve
-              # auto_approve means no human is watching (unattended/scheduled tasks).
-              # Inject an auto_reply so the LLM makes a reasonable decision and keeps going.
-              result = result.merge(
-                auto_reply: "No user is available. Please make a reasonable decision based on the context and continue."
-              )
+              # auto_approve means the agent runs unattended by default, but a
+              # human MAY be watching the terminal. Show a short interactive
+              # countdown: if the user steps in, hand control over and wait for
+              # their answer; otherwise auto-decide and keep going.
+              countdown = @ui&.request_feedback_with_countdown(seconds: 10)
+
+              if @ui.nil? || countdown == :timeout
+                result = result.merge(
+                  auto_reply: "No user is available. Please make a reasonable decision based on the context and continue."
+                )
+              elsif countdown.is_a?(String) && !countdown.strip.empty?
+                # User stepped in and typed an answer right away. Route it through
+                # the denied+feedback path so the agent responds to it immediately
+                # instead of breaking and forcing the user to re-type.
+                denied = true
+                feedback = countdown
+              else
+                # User stepped in but gave no text — hand control back to the CLI.
+                awaiting_feedback = true
+              end
             else
               # confirm_all / confirm_safes — a human is present, truly wait for user input.
               awaiting_feedback = true
