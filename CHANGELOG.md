@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2026-06-29
+
+### Added
+- Run agent inside meeting sessions; launch new meetings directly from session context
+- Long video generation support
+- Show raw LLM error message in error card with collapsible detail
+- Fake tool call detector to catch hallucinated tool invocations
+- Accent color customization for Web UI theme
+
+### Improved
+- Refine auto-confirm wait TUI display
+- Improve split button UX and billing period tab hover behavior
+
+### Fixed
+- Terminal: adaptive GBK/UTF-8 decoding for PTY output to fix garbled text on Windows
+- Resolve vision model detection against the actual request model
+- Fix FrozenError when pressing Ctrl+U to clear text in modal
+- Detect scrollbar-drag correctly to prevent unwanted auto-scroll in chat
+- Fix split button dropdown closing when clicking inside button wrap area
+- Show success toast when saving profile or memory
+- Preserve single line breaks in profile/memory preview
+- Make text selection visible in profile/memory editor
+- Preserve memory card expand state across re-render
+- Refresh time machine on task completion
+- Re-check version on WebSocket reconnect so upgrade badge updates
+- Harden DashScope TTS routing and error handling
+
 ## [1.3.4] - 2026-06-25
 
 ### Added
