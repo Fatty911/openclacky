@@ -7601,7 +7601,7 @@ body.setup-mode[data-theme="dark"] {
   cursor: pointer;
   transition: background .15s, opacity .15s;
 }
-.setup-submit-btn:hover    { background: #2563eb; }
+.setup-submit-btn:hover    { background: var(--color-button-primary-hover); }
 .setup-submit-btn:disabled { opacity: .5; cursor: default; }
 
 /* ── Onboard panel ───────────────────────────────────────────────────────── */
