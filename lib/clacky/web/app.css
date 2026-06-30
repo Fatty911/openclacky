@@ -4486,6 +4486,7 @@ body {
   border-radius: 10px;
   padding: 0.625rem 0.875rem;
   background: var(--color-bg-secondary);
+  margin-bottom: 0.625rem;
 }
 .backup-auto-card .backup-auto-row {
   margin: 0.25rem 0;
@@ -4517,11 +4518,63 @@ body {
   font-size: 0.75rem;
   color: var(--color-text-secondary);
 }
+.backup-dest-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.625rem 0 0.25rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--color-border-primary);
+}
+.backup-dest-label {
+  font-size: 0.78125rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.backup-dest-path {
+  font-size: 0.78125rem;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.btn-settings-link {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--color-border-primary);
+  border-radius: 6px;
+  color: var(--color-accent-primary);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-settings-link:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent-primary);
+}
 .backup-actions {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.backup-config-row {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+.btn-settings-action--file {
+  cursor: pointer;
+}
+.backup-actions-sep {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--color-border);
+  flex-shrink: 0;
 }
 
 .settings-network-url {

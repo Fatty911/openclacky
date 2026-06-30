@@ -15,6 +15,7 @@ require "securerandom"
 require "timeout"
 require "yaml"
 require "date"
+require "open3"
 require_relative "session_registry"
 require_relative "git_panel"
 require_relative "web_ui_controller"
@@ -468,8 +469,8 @@ module Clacky
           30
         elsif path == "/api/media/video/understand"
           60
-        elsif path.start_with?("/api/backup/download") || path == "/api/backup/run"
-          # Building a tar.gz of ~/.clacky (with session history) can take a while.
+        elsif path.start_with?("/api/backup/download") || path == "/api/backup/run" || path == "/api/backup/restore"
+          # Building/extracting a tar.gz of ~/.clacky can take a while.
           120
         else
           10
@@ -525,6 +526,8 @@ module Clacky
         when ["GET",    "/api/backup/status"]     then api_backup_status(res)
         when ["POST",   "/api/backup/run"]        then api_backup_run(res)
         when ["GET",    "/api/backup/download"]   then api_backup_download(res)
+        when ["POST",   "/api/backup/restore"]    then api_backup_restore(req, res)
+        when ["POST",   "/api/backup/open-folder"] then api_backup_open_folder(res)
         when ["PATCH",  "/api/backup/config"]     then api_backup_config(req, res)
         when ["POST",   "/api/telemetry"]        then api_telemetry(req, res)
         when ["POST",   "/api/onboard/complete"]  then api_onboard_complete(req, res)
@@ -4874,6 +4877,68 @@ module Clacky
           current_id: @agent_config.current_model&.dig("id"),
           media_capabilities: media_capabilities_payload(cfg)
         })
+      end
+
+      # POST /api/backup/restore — accept a tar.gz upload, extract over ~/.clacky, hot-restart
+      def api_backup_restore(req, res)
+        body = req.body.to_s
+        return json_response(res, 400, { error: "Empty body" }) if body.empty?
+
+        clacky_dir = File.expand_path("~/.clacky")
+        stamp      = Time.now.strftime("%Y%m%d-%H%M%S")
+        tmp_archive = File.join(Dir.tmpdir, "clacky-restore-#{stamp}.tar.gz")
+        tmp_backup  = File.join(Dir.tmpdir, "clacky-pre-restore-#{stamp}")
+
+        File.binwrite(tmp_archive, body)
+
+        FileUtils.cp_r(clacky_dir, tmp_backup)
+
+        result = system("tar", "-xzf", tmp_archive, "-C", clacky_dir)
+        unless result
+          FileUtils.rm_rf(clacky_dir)
+          FileUtils.cp_r(tmp_backup, clacky_dir)
+          return json_response(res, 500, { error: "Failed to extract archive" })
+        end
+
+        json_response(res, 200, { ok: true })
+
+        Thread.new do
+          sleep 0.5
+          if @master_pid
+            begin
+              Process.kill("USR1", @master_pid)
+            rescue Errno::ESRCH
+              standalone_exec_restart
+            end
+          else
+            standalone_exec_restart
+          end
+        end
+      rescue => e
+        json_response(res, 500, { ok: false, error: e.message })
+      ensure
+        FileUtils.rm_f(tmp_archive) if tmp_archive
+        FileUtils.rm_rf(tmp_backup) if tmp_backup && Dir.exist?(tmp_backup)
+      end
+
+      # POST /api/backup/open-folder — open the backup destination in Finder/Explorer
+      def api_backup_open_folder(res)
+        dest = BackupManager.status["dest_dir"]
+        FileUtils.mkdir_p(dest)
+        host_os = RbConfig::CONFIG["host_os"]
+        if host_os =~ /darwin/
+          system("open", dest)
+        elsif host_os =~ /linux/
+          if File.exist?("/proc/version") && File.read("/proc/version").downcase.include?("microsoft")
+            windows_path, = Open3.capture2("wslpath", "-w", dest)
+            system("explorer.exe", windows_path.strip) unless windows_path.strip.empty?
+          else
+            system("xdg-open", dest)
+          end
+        end
+        json_response(res, 200, { ok: true, dest_dir: dest })
+      rescue => e
+        json_response(res, 500, { ok: false, error: e.message })
       end
 
       # Resolve the AgentConfig for a given session, falling back to nil when

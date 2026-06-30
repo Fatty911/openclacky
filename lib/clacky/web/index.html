@@ -805,6 +805,7 @@
         <button class="settings-tab active" data-tab="models" data-i18n="settings.tabs.models">Models</button>
         <button class="settings-tab" data-tab="ui" data-i18n="settings.tabs.ui">UI</button>
         <button class="settings-tab" data-tab="general" data-i18n="settings.tabs.general">General</button>
+        <button class="settings-tab" data-tab="data" data-i18n="settings.tabs.data">Data</button>
         <button class="settings-tab" data-tab="about" data-i18n="settings.tabs.about">About</button>
         <!-- Extension tab slot: extensions add custom settings tabs here (button needs data-tab="<id>"). -->
         <span id="ext-slot-settings-tabs" data-slot="settings.tabs"></span>
@@ -957,32 +958,7 @@
           </section>
 
           <!-- Backup section -->
-          <section class="settings-section" id="backup-section">
-            <div class="settings-section-title">
-              <span data-i18n="settings.backup.title">Backup</span>
-            </div>
-            <p class="settings-section-desc" data-i18n="settings.backup.desc">Back up your ~/.clacky directory (config, skills, memories, tasks, sessions). Regenerable caches and logs are excluded.</p>
-
-            <div class="backup-auto-card">
-              <div class="backup-auto-row">
-                <label class="toggle-switch">
-                  <input type="checkbox" id="backup-auto-toggle">
-                  <span class="toggle-slider"></span>
-                </label>
-                <span class="backup-auto-label" data-i18n="settings.backup.autoLabel">Automatic backup</span>
-                <span class="backup-auto-hint" data-i18n="settings.backup.autoHint">Daily at 03:00, keeps the latest 7</span>
-              </div>
-
-              <label class="backup-option backup-option-nested">
-                <input type="checkbox" id="backup-include-sessions">
-                <span data-i18n="settings.backup.includeSessions">Include session history (larger archive)</span>
-              </label>
-            </div>
-
-            <div class="backup-actions">
-              <button id="btn-backup-now" class="btn-settings-action" data-i18n="settings.backup.runNow">Download backup (full snapshot)</button>
-              <span id="backup-status" class="model-test-result"></span>
-            </div>
+          <section class="settings-section" id="backup-section" style="display:none">
           </section>
 
           <!-- Brand & License section -->
@@ -1072,6 +1048,56 @@
 
           </section>
         </div><!-- end Tab: General -->
+
+        <!-- ══ Tab: Data ══ -->
+        <div class="settings-tab-content" data-tab-content="data" style="display:none">
+
+          <!-- 自动备份 -->
+          <section class="settings-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.backup.autoTitle">Auto Backup</span>
+            </div>
+            <p class="settings-section-desc" data-i18n="settings.backup.desc">Back up your ~/.clacky directory (config, skills, memories, tasks, sessions). Regenerable caches and logs are excluded.</p>
+
+            <div class="backup-auto-card">
+              <div class="backup-auto-row">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="backup-auto-toggle">
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="backup-auto-label" data-i18n="settings.backup.autoLabel">Automatic backup</span>
+                <span class="backup-auto-hint" data-i18n="settings.backup.autoHint">Daily at 03:00, keeps the latest 7</span>
+              </div>
+              <label class="backup-option backup-option-nested">
+                <input type="checkbox" id="backup-include-sessions">
+                <span data-i18n="settings.backup.includeSessions">Include session history (larger archive)</span>
+              </label>
+              <div class="backup-dest-row">
+                <span class="backup-dest-label" data-i18n="settings.backup.destLabel">Backup folder</span>
+                <span class="backup-dest-path" id="backup-dest-path">—</span>
+                <button id="btn-backup-open-folder" class="btn-settings-link" data-i18n="settings.backup.openFolder">Open</button>
+              </div>
+              <div id="backup-status" class="model-test-result"></div>
+            </div>
+          </section>
+
+          <!-- 手动备份 -->
+          <section class="settings-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.backup.manualTitle">Manual Backup</span>
+            </div>
+
+            <div class="backup-actions">
+              <button id="btn-backup-now" class="btn-settings-action" data-i18n="settings.backup.runNow">Download backup</button>
+              <label class="btn-settings-action btn-settings-action--file">
+                <span data-i18n="settings.backup.restoreBtn">Restore backup</span>
+                <input type="file" id="input-backup-restore" accept=".tar.gz,.gz" style="display:none">
+              </label>
+              <span id="backup-manual-status" class="model-test-result"></span>
+            </div>
+          </section>
+
+        </div><!-- end Tab: Data -->
 
         <!-- ══ Tab: About ══ -->
         <div class="settings-tab-content" data-tab-content="about" style="display:none">
