@@ -41,14 +41,14 @@ module Clacky
     end
 
     class << self
-      # Registry of all loaded ApiExtension subclasses, keyed by extension id
-      # (== directory name == mount prefix segment).
+      # Keyed by mount_id ("<ext_id>/<unit_id>"). One container can register
+      # multiple units; each gets its own subclass and its own mount segment.
       def registry
         @registry ||= {}
       end
 
-      def register(ext_id, klass)
-        registry[ext_id] = klass
+      def register(mount_id, klass)
+        registry[mount_id] = klass
       end
 
       def reset_registry!
@@ -95,6 +95,19 @@ module Clacky
 
       def ext_id=(value)
         @ext_id = value
+      end
+
+      def unit_id
+        @unit_id
+      end
+
+      def unit_id=(value)
+        @unit_id = value
+      end
+
+      def mount_id
+        return nil unless @ext_id && @unit_id
+        "#{@ext_id}/#{@unit_id}"
       end
 
       def ext_dir
@@ -234,6 +247,10 @@ module Clacky
       self.class.ext_id
     end
 
+    def unit_id
+      self.class.unit_id
+    end
+
     def config
       self.class.meta["config"] || {}
     end
@@ -332,7 +349,7 @@ module Clacky
     end
 
     def logger
-      @logger ||= ScopedLogger.new(self.class.ext_id)
+      @logger ||= ScopedLogger.new(self.class.mount_id || self.class.ext_id)
     end
 
     # Lightweight wrapper that prefixes log lines with the extension id.

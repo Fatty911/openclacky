@@ -510,6 +510,7 @@ module Clacky
         when ["GET",    "/api/cron-tasks"]    then api_list_cron_tasks(res)
         when ["POST",   "/api/cron-tasks"]    then api_create_cron_task(req, res)
         when ["GET",    "/api/skills"]         then api_list_skills(res)
+        when ["GET",    "/api/agents"]         then api_list_agents(res)
         when ["GET",    "/api/config"]        then api_get_config(req, res)
         when ["GET",    "/api/config/settings"]  then api_get_settings(res)
         when ["GET",    "/api/exchange-rate"]    then api_exchange_rate(req, res)
@@ -1070,18 +1071,20 @@ module Clacky
       end
 
       # Container extensions (ext.yml): inject each declared panel's view.js,
-      # tagged per its scope. scope=global → all agents; scope=agent:<name> →
-      # that agent only. Served from /ext_ui/<ext_id>/<rel> with no-store so
-      # edits go live on page refresh. Never raises.
+      # routed through the panel→agents channel so visibility is driven by
+      # `agent.panels: [id]` references just like official panels. `scope` is
+      # already folded into the panel→agents map by `panel_agents_map`, so a
+      # panel without any referencing agent stays hidden, matching the design
+      # intent: scope = boundary, agent.panels = mount selection.
+      # Served from /ext_ui/<ext_id>/<rel> with no-store so edits go live on
+      # page refresh. Never raises.
       private def container_ext_script_tags
         result = Clacky::ExtensionLoader.load_all
         result.panels.map do |unit|
           rel    = unit.spec["view"]
           ext_id = "ext/#{unit.ext_id}/#{unit.id}"
           src    = "/ext_ui/#{unit.ext_id}/#{rel}"
-          scope  = unit.spec["scope"].to_s
-          agents = scope.start_with?("agent:") ? [scope.delete_prefix("agent:")] : nil
-          "<script>Clacky.ext._extBegin(#{ext_id.to_json}, #{agents.to_json}, #{nil.to_json})</script>" \
+          "<script>Clacky.ext._extBegin(#{ext_id.to_json}, #{nil.to_json}, #{unit.id.to_json})</script>" \
             "<script src=#{src.to_json} data-ext-id=#{ext_id.to_json}></script>" \
             "<script>Clacky.ext._extEnd()</script>"
         end.join("\n")
@@ -1100,21 +1103,53 @@ module Clacky
       end
 
       # { "git" => ["coding", ...], ... } — scan every agent profile.yml for a
-      # `panels:` list and invert it into panel → referencing agents.
+      # `panels:` list and invert it into panel → referencing agents. For a
+      # container-contributed panel with `scope: agent:<name>`, the resulting
+      # set is intersected with the scope so a misreferenced panel never leaks
+      # outside its declared boundary.
       private def panel_agents_map
         result = Hash.new { |h, k| h[k] = [] }
+        agent_profile_data.each do |name, data|
+          Array(data["panels"]).each { |panel| result[panel.to_s] << name unless result[panel.to_s].include?(name) }
+        end
+
+        Array(Clacky::ExtensionLoader.last_result&.panels).each do |unit|
+          scope = unit.spec["scope"].to_s
+          next unless scope.start_with?("agent:")
+
+          allowed = scope.delete_prefix("agent:")
+          if result.key?(unit.id)
+            result[unit.id] = result[unit.id].select { |a| a == allowed }
+          end
+        end
+        result
+      end
+
+      # { agent_name => parsed_profile_data } merged across built-in, user, and
+      # ext-contributed agents. Override order: ext < user (ext provides defaults
+      # for ids not in user dirs; user dirs win on collision).
+      private def agent_profile_data
+        data = {}
+        Array(Clacky::ExtensionLoader.last_result&.agents).each do |unit|
+          data[unit.id] = {
+            "name"        => unit.id,
+            "description" => unit.spec["description"],
+            "panels"      => unit.spec["panels"],
+            "skills"      => unit.spec["skills"],
+          }
+        end
         agent_profile_dirs.each do |name, dir|
           yml = File.join(dir, "profile.yml")
           next unless File.file?(yml)
 
-          data = begin
+          parsed = begin
             YAML.safe_load(File.read(yml)) || {}
           rescue StandardError
             {}
           end
-          Array(data["panels"]).each { |panel| result[panel.to_s] << name unless result[panel.to_s].include?(name) }
+          data[name] = parsed
         end
-        result
+        data
       end
 
       # { agent_name => resolved_dir } across built-in and user agent dirs,
@@ -1262,7 +1297,7 @@ module Clacky
         result = Clacky::ExtensionLoader.load_all
         result.api.each do |unit|
           r = Clacky::ApiExtensionLoader::Result.new(loaded: [], skipped: [])
-          Clacky::ApiExtensionLoader.load_one(unit.ext_id, unit.dir, unit.spec["handler_abs"], r)
+          Clacky::ApiExtensionLoader.load_one(unit.ext_id, unit.id, unit.dir, unit.spec["handler_abs"], r)
           r.skipped.each { |(id, reason)| Clacky::Logger.warn("[ExtensionLoader] skip api #{id}: #{reason}") }
         end
         result.errors.each do |e|
@@ -3789,6 +3824,14 @@ module Clacky
           entry
         end
         json_response(res, 200, { skills: skills })
+      end
+
+      # GET /api/agents — list all available agent profiles (default + user override + ext).
+      # Drives the "Agent" dropdown in the New Session modal so ext-contributed
+      # agents show up alongside built-ins.
+      def api_list_agents(res)
+        agents = Clacky::AgentProfile.all
+        json_response(res, 200, { agents: agents })
       end
 
       # GET /api/sessions/:id/skills — list user-invocable skills for a session,

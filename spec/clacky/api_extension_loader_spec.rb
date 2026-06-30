@@ -28,11 +28,13 @@ RSpec.describe Clacky::ApiExtensionLoader do
 
       result = described_class.load_all(dir: tmp, builtin: false)
 
-      expect(result.loaded).to eq(["my-dashboard"])
+      expect(result.loaded).to eq(["my-dashboard/my-dashboard"])
       expect(result.skipped).to be_empty
-      klass = Clacky::ApiExtension.registry["my-dashboard"]
+      klass = Clacky::ApiExtension.registry["my-dashboard/my-dashboard"]
       expect(klass).not_to be_nil
       expect(klass.ext_id).to eq("my-dashboard")
+      expect(klass.unit_id).to eq("my-dashboard")
+      expect(klass.mount_id).to eq("my-dashboard/my-dashboard")
       expect(klass.routes.size).to eq(1)
     end
 
@@ -49,14 +51,14 @@ RSpec.describe Clacky::ApiExtensionLoader do
 
       result = described_class.load_all(dir: tmp, builtin: false)
 
-      expect(result.loaded).to include("good")
-      expect(result.skipped.map(&:first)).to include("broken")
+      expect(result.loaded).to include("good/good")
+      expect(result.skipped.map(&:first)).to include("broken/broken")
     end
 
     it "skips an extension that does not define a Clacky::ApiExtension subclass" do
       make_ext("empty", handler_rb: "puts 'no class here'\n")
       result = described_class.load_all(dir: tmp, builtin: false)
-      expect(result.skipped.map(&:first)).to include("empty")
+      expect(result.skipped.map(&:first)).to include("empty/empty")
     end
 
     it "skips an extension that declares no routes" do
@@ -65,7 +67,7 @@ RSpec.describe Clacky::ApiExtensionLoader do
         end
       RUBY
       result = described_class.load_all(dir: tmp, builtin: false)
-      expect(result.skipped.map(&:first)).to include("no-routes")
+      expect(result.skipped.map(&:first)).to include("no-routes/no-routes")
     end
 
     it "skips an extension that uses public_endpoint without meta.yml public:true" do
@@ -79,7 +81,7 @@ RSpec.describe Clacky::ApiExtensionLoader do
       RUBY
       result = described_class.load_all(dir: tmp, builtin: false)
       reasons = result.skipped.to_h
-      expect(reasons["webhook"]).to match(/public_endpoint/)
+      expect(reasons["webhook/webhook"]).to match(/public_endpoint/)
     end
 
     it "accepts public_endpoint when meta.yml declares public: true" do
@@ -92,7 +94,7 @@ RSpec.describe Clacky::ApiExtensionLoader do
         end
       RUBY
       result = described_class.load_all(dir: tmp, builtin: false)
-      expect(result.loaded).to include("webhook2")
+      expect(result.loaded).to include("webhook2/webhook2")
     end
 
     it "skips directories starting with underscore (e.g. _disabled)" do

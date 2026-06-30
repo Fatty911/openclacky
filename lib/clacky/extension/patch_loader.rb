@@ -53,8 +53,53 @@ module Clacky
             apply_one(patch_dir, meta_path, result)
           end
         end
+        load_extension_patches(result)
         @last_result = result
         result
+      end
+
+      # Apply patches contributed by ext.yml containers (contributes.patches).
+      # ext.yml-driven patches use a flat shape (target + file [+ fingerprint])
+      # rather than the per-dir meta.yml + patch.rb layout, since the container
+      # author already owns the upgrade lifecycle. If `fingerprint` is given in
+      # ext.yml we still verify it; if absent we trust the author and require
+      # the file directly. Errors are isolated to that single patch.
+      def load_extension_patches(result)
+        units = Array(Clacky::ExtensionLoader.last_result&.patches)
+        units.each do |unit|
+          target   = unit.spec["target"]
+          file_abs = unit.spec["file_abs"]
+          recorded = unit.spec["fingerprint"].to_s
+          id       = "#{unit.ext_id}/#{File.basename(unit.spec['file'], '.rb')}"
+
+          if recorded.empty?
+            require file_abs
+            result.applied << id
+            log(:info, id, "applied → #{target} (no fingerprint, trusted)")
+            next
+          end
+
+          current = fingerprint(target)
+          if current != recorded
+            reason = "fingerprint mismatch — upstream code for #{target} changed"
+            if unit.spec["on_mismatch"] == "warn"
+              result.skipped << [id, "#{reason} (kept, not applied)"]
+              log(:warn, id, result.skipped.last[1])
+            else
+              result.skipped << [id, "#{reason} — disabled"]
+              log(:warn, id, result.skipped.last[1])
+            end
+            next
+          end
+
+          require file_abs
+          result.applied << id
+          log(:info, id, "applied → #{target}")
+        rescue StandardError, ScriptError => e
+          fallback_id = "#{unit&.ext_id}/#{File.basename(unit&.spec&.[]('file').to_s, '.rb')}"
+          result.skipped << [fallback_id, e.message]
+          log(:warn, fallback_id, e.message)
+        end
       end
 
       def last_result

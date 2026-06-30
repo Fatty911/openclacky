@@ -4,8 +4,8 @@ require "fileutils"
 
 module Clacky
   # Discovers extension containers across three source layers and resolves them
-  # into a flat list of capability units (panels, api) for the rest of the
-  # system to mount.
+  # into a flat list of capability units (panels, api, skills, agents) for the
+  # rest of the system to mount.
   #
   # A container is a directory holding an `ext.yml` manifest:
   #
@@ -33,8 +33,13 @@ module Clacky
   #
   # This class only *discovers and resolves*; actual mounting is done by the
   # existing call sites:
-  #   - api units   → ApiExtensionLoader.load_one(...)  (server boot / reload)
-  #   - panel units → http_server ext_script_block(...) (rendered per request)
+  #   - api units     → ApiExtensionLoader.load_one(...)  (server boot / reload)
+  #   - panel units   → http_server ext_script_block(...) (rendered per request)
+  #   - skill units   → SkillLoader#load_extension_skills (reads last_result on load_all)
+  #   - agent units   → AgentProfile + http_server agent_profile_data (lookup by id)
+  #   - channel units → channel.rb extension_adapter_loader (require + register at boot)
+  #   - patch units   → PatchLoader.load_extension_patches (require at boot)
+  #   - hook units    → ShellHookLoader.load_extension_hooks (register at boot)
   #
   # Backward compatibility — brand_skills as a degenerate protected container:
   # A `~/.clacky/brand_skills/<name>/` entry is conceptually a vendor container
@@ -64,9 +69,9 @@ module Clacky
     # One resolution error, structured so an AI author can locate and fix it.
     Error = Struct.new(:ext_id, :layer, :unit, :message, :file, keyword_init: true)
 
-    Result = Struct.new(:panels, :api, :errors, :overridden, keyword_init: true) do
+    Result = Struct.new(:panels, :api, :skills, :agents, :channels, :patches, :hooks, :errors, :overridden, :containers, keyword_init: true) do
       def units
-        panels + api
+        panels + api + skills + agents + channels + patches + hooks
       end
     end
 
@@ -108,7 +113,7 @@ module Clacky
           end
         end
 
-        result = Result.new(panels: [], api: [], errors: errors, overridden: overridden)
+        result = Result.new(panels: [], api: [], skills: [], agents: [], channels: [], patches: [], hooks: [], errors: errors, overridden: overridden, containers: by_id)
         by_id.each_value { |container| resolve_units(container, result) }
 
         @last_result = result
@@ -168,6 +173,31 @@ module Clacky
           unit = build_api_unit(container, spec, result.errors)
           result.api << unit if unit
         end
+
+        Array(contributes["skills"]).each do |spec|
+          unit = build_skill_unit(container, spec, result.errors)
+          result.skills << unit if unit
+        end
+
+        Array(contributes["agents"]).each do |spec|
+          unit = build_agent_unit(container, spec, result.errors)
+          result.agents << unit if unit
+        end
+
+        Array(contributes["channels"]).each do |spec|
+          unit = build_channel_unit(container, spec, result.errors)
+          result.channels << unit if unit
+        end
+
+        Array(contributes["patches"]).each do |spec|
+          unit = build_patch_unit(container, spec, result.errors)
+          result.patches << unit if unit
+        end
+
+        Array(contributes["hooks"]).each do |spec|
+          unit = build_hook_unit(container, spec, result.errors)
+          result.hooks << unit if unit
+        end
       end
 
       private def build_panel_unit(container, spec, errors)
@@ -217,6 +247,137 @@ module Clacky
                  layer: container[:layer], origin: container[:origin],
                  dir: container[:dir],
                  spec: { "handler" => spec["handler"], "handler_abs" => handler_abs })
+      end
+
+      private def build_skill_unit(container, spec, errors)
+        ext_id = container[:ext_id]
+        unless spec.is_a?(Hash) && spec["id"]
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "skill",
+                              message: "skill needs `id`")
+          return nil
+        end
+
+        rel_dir = spec["dir"] || "skills/#{spec['id']}"
+        skill_dir = File.join(container[:dir], rel_dir)
+        unless File.directory?(skill_dir)
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "skill/#{spec['id']}",
+                              message: "skill dir not found: #{rel_dir}", file: skill_dir)
+          return nil
+        end
+
+        encrypted = File.file?(File.join(skill_dir, "SKILL.md.enc"))
+        plain     = File.file?(File.join(skill_dir, "SKILL.md"))
+        unless encrypted || plain
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "skill/#{spec['id']}",
+                              message: "skill dir missing SKILL.md or SKILL.md.enc", file: skill_dir)
+          return nil
+        end
+
+        protected_default = container[:origin] == "marketplace"
+        protected_flag = spec.key?("protected") ? !!spec["protected"] : protected_default
+
+        Unit.new(kind: :skill, id: spec["id"].to_s, ext_id: ext_id,
+                 layer: container[:layer], origin: container[:origin],
+                 dir: container[:dir],
+                 spec: { "dir" => rel_dir, "skill_dir_abs" => skill_dir,
+                         "protected" => protected_flag, "encrypted" => encrypted })
+      end
+
+      private def build_agent_unit(container, spec, errors)
+        ext_id = container[:ext_id]
+        unless spec.is_a?(Hash) && spec["id"] && spec["prompt"]
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "agent",
+                              message: "agent needs both `id` and `prompt`")
+          return nil
+        end
+
+        prompt_abs = File.join(container[:dir], spec["prompt"])
+        unless File.file?(prompt_abs)
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "agent/#{spec['id']}",
+                              message: "prompt file not found: #{spec['prompt']}", file: prompt_abs)
+          return nil
+        end
+
+        Unit.new(kind: :agent, id: spec["id"].to_s, ext_id: ext_id,
+                 layer: container[:layer], origin: container[:origin],
+                 dir: container[:dir],
+                 spec: {
+                   "title"       => spec["title"].to_s,
+                   "prompt"      => spec["prompt"],
+                   "prompt_abs"  => prompt_abs,
+                   "description" => spec["description"].to_s,
+                   "panels"      => Array(spec["panels"]).map(&:to_s),
+                   "skills"      => Array(spec["skills"]).map(&:to_s),
+                 })
+      end
+
+      private def build_channel_unit(container, spec, errors)
+        ext_id = container[:ext_id]
+        unless spec.is_a?(Hash) && spec["id"] && spec["adapter"]
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "channel",
+                              message: "channel needs both `id` and `adapter`")
+          return nil
+        end
+
+        adapter_abs = File.join(container[:dir], spec["adapter"])
+        unless File.file?(adapter_abs)
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "channel/#{spec['id']}",
+                              message: "adapter file not found: #{spec['adapter']}", file: adapter_abs)
+          return nil
+        end
+
+        Unit.new(kind: :channel, id: spec["id"].to_s, ext_id: ext_id,
+                 layer: container[:layer], origin: container[:origin],
+                 dir: container[:dir],
+                 spec: { "adapter" => spec["adapter"], "adapter_abs" => adapter_abs })
+      end
+
+      private def build_patch_unit(container, spec, errors)
+        ext_id = container[:ext_id]
+        unless spec.is_a?(Hash) && spec["target"] && spec["file"]
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "patch",
+                              message: "patch needs both `target` and `file`")
+          return nil
+        end
+
+        file_abs = File.join(container[:dir], spec["file"])
+        unless File.file?(file_abs)
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "patch/#{spec['target']}",
+                              message: "patch file not found: #{spec['file']}", file: file_abs)
+          return nil
+        end
+
+        Unit.new(kind: :patch, id: spec["target"].to_s, ext_id: ext_id,
+                 layer: container[:layer], origin: container[:origin],
+                 dir: container[:dir],
+                 spec: {
+                   "target"      => spec["target"].to_s,
+                   "file"        => spec["file"],
+                   "file_abs"    => file_abs,
+                   "fingerprint" => spec["fingerprint"].to_s,
+                   "on_mismatch" => (spec["on_mismatch"] || "disable").to_s,
+                 })
+      end
+
+      private def build_hook_unit(container, spec, errors)
+        ext_id = container[:ext_id]
+        unless spec.is_a?(Hash) && spec["event"] && spec["file"]
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "hook",
+                              message: "hook needs both `event` and `file`")
+          return nil
+        end
+
+        file_abs = File.join(container[:dir], spec["file"])
+        unless File.file?(file_abs)
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "hook/#{spec['event']}",
+                              message: "hook file not found: #{spec['file']}", file: file_abs)
+          return nil
+        end
+
+        Unit.new(kind: :hook, id: "#{spec['event']}/#{File.basename(spec['file'], '.rb')}", ext_id: ext_id,
+                 layer: container[:layer], origin: container[:origin],
+                 dir: container[:dir],
+                 spec: { "event" => spec["event"].to_s, "file" => spec["file"], "file_abs" => file_abs })
       end
     end
   end

@@ -11,8 +11,8 @@ RSpec.describe "ApiExtensionLoader built-in extensions" do
       empty_dir = Dir.mktmpdir
       begin
         result = Clacky::ApiExtensionLoader.load_all(dir: empty_dir)
-        expect(result.loaded).to include("meeting")
-        expect(Clacky::ApiExtension.registry["meeting"]).not_to be_nil
+        expect(result.loaded).to include("meeting/meeting")
+        expect(Clacky::ApiExtension.registry["meeting/meeting"]).not_to be_nil
       ensure
         FileUtils.remove_entry(empty_dir)
       end
@@ -33,9 +33,9 @@ RSpec.describe "ApiExtensionLoader built-in extensions" do
         RUBY
 
         result = Clacky::ApiExtensionLoader.load_all(dir: user_dir)
-        expect(result.loaded).to include("meeting")
+        expect(result.loaded).to include("meeting/meeting")
 
-        klass = Clacky::ApiExtension.registry["meeting"]
+        klass = Clacky::ApiExtension.registry["meeting/meeting"]
         expect(klass.routes.any? { |r| r.pattern == "/custom" }).to be true
       ensure
         FileUtils.remove_entry(user_dir)

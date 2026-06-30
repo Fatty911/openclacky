@@ -13,10 +13,16 @@ module Clacky
     end
 
     desc "new ID", "Scaffold a runnable hello-panel container at ~/.clacky/ext/local/ID/"
+    method_option :full, type: :boolean, default: false,
+                  desc: "Generate a kitchen-sink container exercising all 7 contributes types"
     def new(id)
-      path = Clacky::ExtensionScaffold.new_container(id)
+      path = Clacky::ExtensionScaffold.new_container(id, full: options[:full])
       puts "Created extension container: #{path}"
-      puts "Reload the WebUI page to see the panel. Edits to view.js and handler.rb take effect on the next request — no restart needed."
+      if options[:full]
+        puts "It contributes panels/api/skills/agents/channels/patches/hooks. Read its README.md, run `clacky ext verify`, then reload the WebUI."
+      else
+        puts "Reload the WebUI page to see the panel. Edits to view.js and handler.rb take effect on the next request — no restart needed."
+      end
     rescue ArgumentError => e
       warn "Error: #{e.message}"
       exit 1
@@ -77,7 +83,7 @@ module Clacky
       exit 1
     end
 
-    desc "verify", "Resolve all containers across layers and report units + errors"
+    desc "verify", "Resolve all containers across layers and report units + structured issues"
     def verify
       result = Clacky::ExtensionLoader.load_all
 
@@ -86,25 +92,27 @@ module Clacky
         return
       end
 
-      result.overridden.each do |(ext_id, losing, winning)|
-        puts "[OVERRIDE] #{ext_id}: #{winning} layer shadows #{losing}"
-      end
-
       result.units.each do |u|
-        if u.kind == :panel
+        case u.kind
+        when :panel
           puts "[OK]   #{u.ext_id}/#{u.id} (panel, scope=#{u.spec['scope']}, #{u.layer})"
-        else
+        when :api
           puts "[OK]   #{u.ext_id}/#{u.id} (api → /api/ext/#{u.ext_id}/, #{u.layer})"
+        else
+          puts "[OK]   #{u.ext_id}/#{u.id} (#{u.kind}, #{u.layer})"
         end
       end
 
-      result.errors.each do |e|
-        loc = e.file ? " [#{e.file}]" : ""
-        unit = e.unit ? "#{e.unit} " : ""
-        puts "[ERR]  #{e.ext_id} #{unit}— #{e.message}#{loc}"
+      issues = Clacky::ExtensionVerifier.verify(result)
+      issues.each do |issue|
+        tag = issue.level == :error ? "[ERR]" : "[WARN]"
+        unit = issue.unit ? " #{issue.unit}" : ""
+        loc  = issue.file ? " [#{issue.file}]" : ""
+        hint = issue.hint ? "\n         hint: #{issue.hint}" : ""
+        puts "#{tag} #{issue.ext}#{unit} (#{issue.code}) — #{issue.message}#{loc}#{hint}"
       end
 
-      exit 1 if result.errors.any?
+      exit 1 if issues.any? { |i| i.level == :error }
     end
 
     desc "list", "List resolved containers and their contributed units"

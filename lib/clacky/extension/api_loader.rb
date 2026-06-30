@@ -3,10 +3,14 @@
 require "fileutils"
 
 module Clacky
-  # Discovers and loads user-defined HTTP API extensions from
-  # ~/.clacky/api_ext/<name>/handler.rb. Each handler is expected to define a
-  # subclass of Clacky::ApiExtension; the subclass is auto-registered with the
-  # framework and its routes become available under /api/ext/<name>/.
+  # Loads HTTP API extensions from two sources into the shared
+  # Clacky::ApiExtension registry, keyed by mount_id ("<ext_id>/<unit_id>"):
+  #
+  #   1. ext.yml containers (~/.clacky/ext/<layer>/<ext_id>/) — one container
+  #      may contribute multiple api units (standalone + panel.api derived).
+  #   2. Loose handlers at ~/.clacky/api_ext/<name>/handler.rb — single-unit
+  #      shorthand; mount_id is "<name>/<name>".
+  #   3. Built-in default_extensions/<name>/handler.rb — same shape as (2).
   #
   # A broken extension (syntax error, missing base class, route conflict) is
   # isolated: skipped with a logged warning, never aborts the load of others.
@@ -22,23 +26,21 @@ module Clacky
         result = Result.new(loaded: [], skipped: [])
         Clacky::ApiExtension.reset_registry!
 
-        # Load built-in (gem-shipped) extensions first (lowest priority)
         if builtin && Dir.exist?(BUILTIN_DIR)
           Dir.glob(File.join(BUILTIN_DIR, "*", "handler.rb")).sort.each do |handler_path|
             ext_dir = File.dirname(handler_path)
             ext_id  = File.basename(ext_dir)
             next if ext_id.start_with?("_")
-            load_one(ext_id, ext_dir, handler_path, result, reload: reload)
+            load_one(ext_id, ext_id, ext_dir, handler_path, result, reload: reload)
           end
         end
 
-        # Load user extensions (higher priority — same ext_id overwrites built-in)
         if Dir.exist?(dir)
           Dir.glob(File.join(dir, "*", "handler.rb")).sort.each do |handler_path|
             ext_dir = File.dirname(handler_path)
             ext_id  = File.basename(ext_dir)
             next if ext_id == DISABLED_DIR || ext_id.start_with?("_")
-            load_one(ext_id, ext_dir, handler_path, result, reload: reload)
+            load_one(ext_id, ext_id, ext_dir, handler_path, result, reload: reload)
           end
         end
 
@@ -51,92 +53,103 @@ module Clacky
         @last_result || load_all
       end
 
-      # Per-request hot path: ensure the handler for `ext_id` is loaded and up to
-      # date before the dispatcher looks it up. Resolves the handler file across
-      # all sources (builtin < loose api_ext < ext.yml container, highest wins),
-      # then (re)loads it only when it is new or its mtime changed. This is what
-      # makes edits to a handler take effect on the next request with no restart.
-      def ensure_fresh(ext_id)
-        path = resolve_handler_path(ext_id)
+      # Per-request hot path used by the dispatcher. Always re-loads the
+      # handler so edits during development show up immediately; constant
+      # redefinition warnings from re-running the file body are silenced
+      # inside `load_one`.
+      def ensure_fresh(mount_id)
+        ext_id, unit_id = split_mount_id(mount_id)
+        return unless ext_id && unit_id
+
+        path, ext_dir = resolve_handler(ext_id, unit_id)
         return unless path
 
-        mtime = File.mtime(path).to_f
-        cached = handler_mtimes[ext_id]
-        return if cached && cached[:path] == path && cached[:mtime] == mtime &&
-                  Clacky::ApiExtension.registry.key?(ext_id)
-
         r = Result.new(loaded: [], skipped: [])
-        load_one(ext_id, File.dirname(path), path, r, reload: true)
-        handler_mtimes[ext_id] = { path: path, mtime: mtime }
+        load_one(ext_id, unit_id, ext_dir, path, r, reload: true)
         r.skipped.each { |(id, reason)| log_skip(id, reason) }
       rescue StandardError => e
-        Clacky::Logger.warn("[ApiExtensionLoader] ensure_fresh(#{ext_id}) failed: #{e.message}")
+        Clacky::Logger.warn("[ApiExtensionLoader] ensure_fresh(#{mount_id}) failed: #{e.message}")
       end
 
-      private def handler_mtimes
-        @handler_mtimes ||= {}
+      private def split_mount_id(mount_id)
+        return [nil, nil] unless mount_id.is_a?(String)
+        ext_id, unit_id = mount_id.split("/", 2)
+        return [nil, nil] if ext_id.nil? || ext_id.empty? || unit_id.nil? || unit_id.empty?
+        [ext_id, unit_id]
       end
 
-      private def resolve_handler_path(ext_id)
-        container = Clacky::ExtensionLoader.load_all.api.find { |u| u.ext_id == ext_id }
-        return container.spec["handler_abs"] if container
+      private def resolve_handler(ext_id, unit_id)
+        container = Clacky::ExtensionLoader.load_all.api.find do |u|
+          u.ext_id == ext_id && u.id == unit_id
+        end
+        return [container.spec["handler_abs"], container.dir] if container
 
-        loose = File.join(DEFAULT_DIR, ext_id, "handler.rb")
-        return loose if File.file?(loose)
+        if ext_id == unit_id
+          loose = File.join(DEFAULT_DIR, ext_id, "handler.rb")
+          return [loose, File.dirname(loose)] if File.file?(loose)
 
-        builtin = File.join(BUILTIN_DIR, ext_id, "handler.rb")
-        return builtin if File.file?(builtin)
+          builtin = File.join(BUILTIN_DIR, ext_id, "handler.rb")
+          return [builtin, File.dirname(builtin)] if File.file?(builtin)
+        end
 
-        nil
+        [nil, nil]
       end
 
-      def load_one(ext_id, ext_dir, handler_path, result, reload: false)
+      def load_one(ext_id, unit_id, ext_dir, handler_path, result, reload: false)
+        mount_id = "#{ext_id}/#{unit_id}"
         meta = read_meta(ext_dir)
         before = Clacky::ApiExtension.pending_subclasses.size
 
-        existing = reload ? Clacky::ApiExtension.registry[ext_id] : nil
+        existing = reload ? Clacky::ApiExtension.registry[mount_id] : nil
         existing&.reset_routes!
 
-        # `load` (not `require`) when reloading so edited handlers re-execute —
-        # `require` evaluates a path only once per process. When the class
-        # constant already exists, `load` reopens it instead of triggering
-        # `inherited`, so we fall back to the registered klass below.
-        reload ? load(handler_path) : require(handler_path)
+        if reload
+          old_verbose = $VERBOSE
+          $VERBOSE = nil
+          begin
+            load(handler_path)
+          ensure
+            $VERBOSE = old_verbose
+          end
+        else
+          require(handler_path)
+        end
 
         new_subclasses = Clacky::ApiExtension.pending_subclasses[before..] || []
         klass = new_subclasses.last || existing
 
         unless klass
-          result.skipped << [ext_id, "no Clacky::ApiExtension subclass defined in handler.rb"]
-          log_skip(ext_id, result.skipped.last[1])
+          result.skipped << [mount_id, "no Clacky::ApiExtension subclass defined in handler.rb"]
+          log_skip(mount_id, result.skipped.last[1])
           return
         end
 
         klass.ext_id  = ext_id
+        klass.unit_id = unit_id
         klass.ext_dir = ext_dir
         klass.meta    = meta
 
         if klass.routes.empty?
-          result.skipped << [ext_id, "no routes declared (use get/post/... DSL)"]
-          log_skip(ext_id, result.skipped.last[1])
-          Clacky::ApiExtension.registry.delete(ext_id)
+          result.skipped << [mount_id, "no routes declared (use get/post/... DSL)"]
+          log_skip(mount_id, result.skipped.last[1])
+          Clacky::ApiExtension.registry.delete(mount_id)
           return
         end
 
         if (gap = validate_public_endpoints(klass, meta))
-          result.skipped << [ext_id, gap]
-          log_skip(ext_id, gap)
+          result.skipped << [mount_id, gap]
+          log_skip(mount_id, gap)
           return
         end
 
-        Clacky::ApiExtension.register(ext_id, klass)
-        result.loaded << ext_id
+        Clacky::ApiExtension.register(mount_id, klass)
+        result.loaded << mount_id
         public_count = klass.public_paths.size
         suffix = public_count > 0 ? " (#{public_count} public)" : ""
-        Clacky::Logger.info("[ApiExtensionLoader] Loaded '#{ext_id}' — #{klass.routes.size} route(s)#{suffix}")
+        Clacky::Logger.info("[ApiExtensionLoader] Loaded '#{mount_id}' — #{klass.routes.size} route(s)#{suffix}")
       rescue StandardError, ScriptError => e
-        result.skipped << [ext_id, e.message]
-        log_skip(ext_id, e.message)
+        result.skipped << ["#{ext_id}/#{unit_id}", e.message]
+        log_skip("#{ext_id}/#{unit_id}", e.message)
       end
 
       private def read_meta(ext_dir)
@@ -156,8 +169,8 @@ module Clacky
         "uses public_endpoint but meta.yml is missing 'public: true'"
       end
 
-      private def log_skip(ext_id, reason)
-        Clacky::Logger.warn("[ApiExtensionLoader] Skipped '#{ext_id}': #{reason}")
+      private def log_skip(mount_id, reason)
+        Clacky::Logger.warn("[ApiExtensionLoader] Skipped '#{mount_id}': #{reason}")
       end
 
       private def log_summary(result)
@@ -168,7 +181,7 @@ module Clacky
       end
 
       # Generate a starter handler.rb at ~/.clacky/api_ext/<name>/handler.rb.
-      # Returns the path to the generated file.
+      # Returns the path to the generated file. Mounts at /api/ext/<name>/<name>/...
       def scaffold(name, dir: DEFAULT_DIR)
         slug = name.to_s.strip.downcase.gsub(/[^a-z0-9_-]+/, "-").gsub(/\A-+|-+\z/, "")
         raise ArgumentError, "invalid api_ext name: #{name.inspect}" if slug.empty?
@@ -187,8 +200,9 @@ module Clacky
         <<~RUBY
           # frozen_string_literal: true
 
-          # Custom HTTP API extension mounted at /api/ext/#{slug}/
-          # Scaffolded by `clacky api_ext_new #{slug}` — fill in the routes you need.
+          # Custom HTTP API extension mounted at /api/ext/#{slug}/#{slug}/
+          # Scaffolded by `clacky api_ext_new #{slug}` — fill in routes (relative
+          # to the mount, e.g. `get "/hello"` → /api/ext/#{slug}/#{slug}/hello).
           class #{const} < Clacky::ApiExtension
             get "/hello" do
               json(message: "hello from #{slug}")

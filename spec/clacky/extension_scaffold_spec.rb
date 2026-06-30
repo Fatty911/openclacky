@@ -29,7 +29,7 @@ RSpec.describe Clacky::ExtensionScaffold do
       path = described_class.new_container("ping", dir: dir)
       handler = File.read(File.join(path, "panels/hello/handler.rb"))
       expect(handler).to match(/class PingExt < Clacky::ApiExtension/)
-      expect(handler).to match(%r{get "/hello"})
+      expect(handler).to match(%r{get "/"})
     end
 
     it "refuses to overwrite an existing container" do

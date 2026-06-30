@@ -146,6 +146,11 @@ module Clacky
       # Load declarative shell hooks from ~/.clacky/hooks.yml
       ShellHookLoader.load_into(@hooks)
 
+      # Copy ext.yml-contributed hook callbacks (contributes.hooks) onto this
+      # agent's hook manager. The callbacks were registered process-wide at
+      # boot via ExtensionHookLoader.
+      ExtensionHookRegistry.apply_to(@hooks)
+
       # Ensure user-space parsers are in place (~/.clacky/parsers/)
       Utils::ParserManager.setup!
 

@@ -169,5 +169,304 @@ RSpec.describe Clacky::ExtensionLoader do
       expect(result.units).to be_empty
       expect(result.errors).to be_empty
     end
+
+    it "resolves a plain skill unit" do
+      manifest = <<~YAML
+        id: triage-pack
+        origin: self
+        contributes:
+          skills:
+            - id: triage
+      YAML
+      make_container(local, "triage-pack", manifest: manifest, files: {
+        "skills/triage/SKILL.md" => "---\nname: triage\ndescription: Triage incidents\n---\nbody",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      expect(result.skills.size).to eq(1)
+      unit = result.skills.first
+      expect(unit.kind).to eq(:skill)
+      expect(unit.id).to eq("triage")
+      expect(unit.spec["protected"]).to eq(false)
+      expect(unit.spec["encrypted"]).to eq(false)
+      expect(unit.spec["skill_dir_abs"]).to end_with("skills/triage")
+    end
+
+    it "marks a marketplace skill protected by default" do
+      manifest = <<~YAML
+        id: paid-pack
+        origin: marketplace
+        contributes:
+          skills:
+            - id: closed
+      YAML
+      make_container(installed, "paid-pack", manifest: manifest, files: {
+        "skills/closed/SKILL.md.enc" => "encrypted-bytes",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      unit = result.skills.first
+      expect(unit.spec["protected"]).to eq(true)
+      expect(unit.spec["encrypted"]).to eq(true)
+    end
+
+    it "honors an explicit protected override" do
+      manifest = <<~YAML
+        id: mixed-pack
+        origin: marketplace
+        contributes:
+          skills:
+            - id: free-tease
+              protected: false
+      YAML
+      make_container(installed, "mixed-pack", manifest: manifest, files: {
+        "skills/free-tease/SKILL.md" => "---\nname: free-tease\ndescription: tease\n---\n",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      expect(result.skills.first.spec["protected"]).to eq(false)
+    end
+
+    it "supports a custom skill dir override" do
+      manifest = <<~YAML
+        id: cu-pack
+        origin: self
+        contributes:
+          skills:
+            - id: alt
+              dir: nested/alt-skill
+      YAML
+      make_container(local, "cu-pack", manifest: manifest, files: {
+        "nested/alt-skill/SKILL.md" => "---\nname: alt\ndescription: alt\n---\n",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      expect(result.skills.first.spec["skill_dir_abs"]).to end_with("nested/alt-skill")
+    end
+
+    it "errors when skill dir is missing" do
+      manifest = <<~YAML
+        id: bad-skill
+        origin: self
+        contributes:
+          skills:
+            - id: ghost
+      YAML
+      make_container(local, "bad-skill", manifest: manifest)
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.skills).to be_empty
+      expect(result.errors.first.message).to match(/skill dir not found/)
+    end
+
+    it "errors when SKILL.md and SKILL.md.enc are both missing" do
+      manifest = <<~YAML
+        id: empty-skill
+        origin: self
+        contributes:
+          skills:
+            - id: ghost
+      YAML
+      make_container(local, "empty-skill", manifest: manifest, files: {
+        "skills/ghost/.keep" => "",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.skills).to be_empty
+      expect(result.errors.first.message).to match(/SKILL\.md or SKILL\.md\.enc/)
+    end
+
+    it "resolves an agent unit with prompt, panels and skills refs" do
+      manifest = <<~YAML
+        id: support-pack
+        origin: self
+        contributes:
+          agents:
+            - id: support
+              prompt: prompts/support.md
+              description: Customer support agent
+              panels: [inbox, replies]
+              skills: [triage]
+      YAML
+      make_container(local, "support-pack", manifest: manifest, files: {
+        "prompts/support.md" => "You are a support agent.",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      expect(result.agents.size).to eq(1)
+      unit = result.agents.first
+      expect(unit.kind).to eq(:agent)
+      expect(unit.id).to eq("support")
+      expect(unit.spec["description"]).to eq("Customer support agent")
+      expect(unit.spec["panels"]).to eq(["inbox", "replies"])
+      expect(unit.spec["skills"]).to eq(["triage"])
+      expect(unit.spec["prompt_abs"]).to end_with("prompts/support.md")
+    end
+
+    it "errors when an agent prompt file is missing" do
+      manifest = <<~YAML
+        id: ghost-pack
+        origin: self
+        contributes:
+          agents:
+            - id: ghost
+              prompt: prompts/missing.md
+      YAML
+      make_container(local, "ghost-pack", manifest: manifest)
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.agents).to be_empty
+      expect(result.errors.first.message).to match(/prompt file not found/)
+    end
+
+    it "errors when an agent unit lacks id or prompt" do
+      manifest = <<~YAML
+        id: half-pack
+        origin: self
+        contributes:
+          agents:
+            - id: nameless
+      YAML
+      make_container(local, "half-pack", manifest: manifest)
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.agents).to be_empty
+      expect(result.errors.first.message).to match(/agent needs both `id` and `prompt`/)
+    end
+
+    it "resolves a channel unit pointing at an adapter file" do
+      manifest = <<~YAML
+        id: slack-pack
+        origin: self
+        contributes:
+          channels:
+            - id: slack
+              adapter: channels/slack.rb
+      YAML
+      make_container(local, "slack-pack", manifest: manifest, files: {
+        "channels/slack.rb" => "# adapter file",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      expect(result.channels.size).to eq(1)
+      unit = result.channels.first
+      expect(unit.kind).to eq(:channel)
+      expect(unit.id).to eq("slack")
+      expect(unit.spec["adapter_abs"]).to end_with("channels/slack.rb")
+    end
+
+    it "errors when a channel adapter file is missing" do
+      manifest = <<~YAML
+        id: ghost-channel
+        origin: self
+        contributes:
+          channels:
+            - id: ghost
+              adapter: channels/missing.rb
+      YAML
+      make_container(local, "ghost-channel", manifest: manifest)
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.channels).to be_empty
+      expect(result.errors.first.message).to match(/adapter file not found/)
+    end
+
+    it "resolves a patch unit pointing at a target and file" do
+      manifest = <<~YAML
+        id: patch-pack
+        origin: self
+        contributes:
+          patches:
+            - target: "Clacky::Tools::WebSearch#execute"
+              file: patches/timeout.rb
+      YAML
+      make_container(local, "patch-pack", manifest: manifest, files: {
+        "patches/timeout.rb" => "# patch content",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      expect(result.patches.size).to eq(1)
+      unit = result.patches.first
+      expect(unit.kind).to eq(:patch)
+      expect(unit.spec["target"]).to eq("Clacky::Tools::WebSearch#execute")
+      expect(unit.spec["file_abs"]).to end_with("patches/timeout.rb")
+      expect(unit.spec["on_mismatch"]).to eq("disable")
+    end
+
+    it "errors when a patch file is missing" do
+      manifest = <<~YAML
+        id: ghost-patch
+        origin: self
+        contributes:
+          patches:
+            - target: "Some::Class#method"
+              file: patches/missing.rb
+      YAML
+      make_container(local, "ghost-patch", manifest: manifest)
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.patches).to be_empty
+      expect(result.errors.first.message).to match(/patch file not found/)
+    end
+
+    it "resolves a hook unit pointing at an event and file" do
+      manifest = <<~YAML
+        id: hook-pack
+        origin: self
+        contributes:
+          hooks:
+            - event: before_tool_use
+              file: hooks/audit.rb
+      YAML
+      make_container(local, "hook-pack", manifest: manifest, files: {
+        "hooks/audit.rb" => "# hook content",
+      })
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      expect(result.hooks.size).to eq(1)
+      unit = result.hooks.first
+      expect(unit.kind).to eq(:hook)
+      expect(unit.spec["event"]).to eq("before_tool_use")
+      expect(unit.spec["file_abs"]).to end_with("hooks/audit.rb")
+    end
+
+    it "errors when a hook file is missing" do
+      manifest = <<~YAML
+        id: ghost-hook
+        origin: self
+        contributes:
+          hooks:
+            - event: on_complete
+              file: hooks/missing.rb
+      YAML
+      make_container(local, "ghost-hook", manifest: manifest)
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.hooks).to be_empty
+      expect(result.errors.first.message).to match(/hook file not found/)
+    end
   end
 end

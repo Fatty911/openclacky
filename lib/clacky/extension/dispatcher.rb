@@ -17,15 +17,15 @@ module Clacky
         # Public entry called from HttpServer#_dispatch_rest.
         # Returns true to indicate the request was handled (200/4xx/5xx).
         def handle(req, res, http_server:)
-          ext_id, sub_path = parse_path(req.path)
-          return not_found(res, "extension id missing") unless ext_id
+          mount_id, sub_path = parse_path(req.path)
+          return not_found(res, "extension mount id missing") unless mount_id
 
           # Lazily (re)load the handler on each request so edits to handler.rb take
           # effect with no restart — cheap for a local app with a handful of exts.
-          Clacky::ApiExtensionLoader.ensure_fresh(ext_id)
+          Clacky::ApiExtensionLoader.ensure_fresh(mount_id)
 
-          klass = Clacky::ApiExtension.registry[ext_id]
-          return not_found(res, "extension '#{ext_id}' not found") unless klass
+          klass = Clacky::ApiExtension.registry[mount_id]
+          return not_found(res, "extension '#{mount_id}' not found") unless klass
 
           method = req.request_method.to_s.downcase.to_sym
           route, params = find_route(klass, method, sub_path)
@@ -42,10 +42,10 @@ module Clacky
         # Tells HttpServer whether a given /api/ext/... path can skip access-key
         # auth, so the host can keep its single-source-of-truth auth logic.
         def public_path?(path, method)
-          ext_id, sub_path = parse_path(path)
-          return false unless ext_id
+          mount_id, sub_path = parse_path(path)
+          return false unless mount_id
 
-          klass = Clacky::ApiExtension.registry[ext_id]
+          klass = Clacky::ApiExtension.registry[mount_id]
           return false unless klass
           return false if klass.public_paths.empty?
 
@@ -58,16 +58,27 @@ module Clacky
         # Local-app convenience: see ApiExtensionLoader.ensure_fresh — that is
         # the single source of truth for per-request hot reload.
 
+        # /api/ext/<ext_id>/<unit_id>/<rest> → ["<ext_id>/<unit_id>", "/<rest>"]
         private def parse_path(path)
           return [nil, nil] unless path.to_s.start_with?(MOUNT_PREFIX)
 
           tail = path[MOUNT_PREFIX.length..]
-          slash = tail.index("/")
-          if slash
-            [tail[0...slash], tail[slash..]]
+          first = tail.index("/")
+          return [nil, nil] unless first
+
+          ext_id = tail[0...first]
+          rest = tail[(first + 1)..]
+          second = rest.index("/")
+          if second
+            unit_id = rest[0...second]
+            sub = rest[second..]
           else
-            [tail, "/"]
+            unit_id = rest
+            sub = "/"
           end
+          return [nil, nil] if ext_id.empty? || unit_id.empty?
+
+          ["#{ext_id}/#{unit_id}", sub]
         end
 
         private def find_route(klass, method, sub_path)
@@ -93,10 +104,10 @@ module Clacky
         rescue Clacky::ApiExtension::Halt => halt
           write_response(res, halt.status, halt.payload, halt.content_type)
         rescue Timeout::Error
-          Clacky::Logger.warn("[api_ext:#{klass.ext_id}] Timed out after #{timeout_sec}s on #{route.method.upcase} #{route.pattern}")
+          Clacky::Logger.warn("[api_ext:#{klass.mount_id}] Timed out after #{timeout_sec}s on #{route.method.upcase} #{route.pattern}")
           write_json(res, 503, error: "request timed out")
         rescue StandardError => e
-          Clacky::Logger.warn("[api_ext:#{klass.ext_id}] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+          Clacky::Logger.warn("[api_ext:#{klass.mount_id}] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
           write_json(res, 500, error: e.message)
         end
 

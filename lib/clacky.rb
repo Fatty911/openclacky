@@ -140,20 +140,26 @@ require_relative "clacky/server/browser_manager"
 require_relative "clacky/server/backup_manager"
 require_relative "clacky/cli"
 
-# Runtime patch layer: load user/AI patches from ~/.clacky/patches/ after all
-# gem code is defined, so fingerprints reflect the actual installed source.
-require_relative "clacky/extension/patch_loader"
-Clacky::PatchLoader.load_all
-
-# HTTP API extension layer: define the base class + loader + dispatcher.
-# Loading of user extensions is deferred to HttpServer#start so the host
-# process is fully initialized before extension handlers can resolve helpers
-# like session_manager or agent_config.
+# Extension architecture: define the base class + container loader + scaffolding
+# + dispatcher up front so the patch / hook loaders below can read its result.
 require_relative "clacky/extension/api_extension"
 require_relative "clacky/extension/api_loader"
 require_relative "clacky/extension/loader"
 require_relative "clacky/extension/scaffold"
 require_relative "clacky/extension/dispatcher"
+require_relative "clacky/extension/hook_loader"
+require_relative "clacky/extension/verifier"
+Clacky::ExtensionLoader.load_all
+
+# Runtime patch layer: load user/AI patches from ~/.clacky/patches/ AND patches
+# contributed by ext.yml containers (contributes.patches). Runs after all gem
+# code is defined, so fingerprints reflect the actual installed source.
+require_relative "clacky/extension/patch_loader"
+Clacky::PatchLoader.load_all
+
+# Process-wide registry of hook callbacks contributed by ext.yml containers
+# (contributes.hooks). Each agent copies them onto its own HookManager at init.
+Clacky::ExtensionHookLoader.load_all
 
 module Clacky
   class AgentInterrupted < Exception; end  # Inherit from Exception to bypass rescue StandardError
