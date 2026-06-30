@@ -1085,12 +1085,15 @@ module Clacky
           queue.push(:timeout) unless session[:intervened]
         end
 
-        result = queue.pop
-        session[:watchdog].kill if session[:watchdog]&.alive?
-        @feedback_countdown = nil
-        @layout.remove_entry(entry_id) if entry_id
-        @layout.recalculate_layout
-        @layout.render_all
+        begin
+          result = queue.pop
+        ensure
+          session[:watchdog].kill if session[:watchdog]&.alive?
+          @feedback_countdown = nil
+          @layout.remove_entry(entry_id) if entry_id
+          @layout.recalculate_layout
+          @layout.render_all
+        end
 
         if result == :timeout
           append_output(theme.format_text("  No response — continuing automatically.", :thinking))
