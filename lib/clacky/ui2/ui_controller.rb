@@ -664,22 +664,13 @@ module Clacky
 
       # Called by ProgressHandle#finish.
       def unregister_progress(handle, final_frame:)
-        Clacky::Logger.warn("[ph_debug] unreg_entry", oid: handle.object_id, eid: handle.entry_id, top: @progress_stack.last == handle, stack_size: @progress_stack.size, ff: final_frame.to_s[0, 200])
         @progress_mutex.synchronize do
-          # If this handle still holds its entry (it's currently top), we
-          # render one last frame there and release the id. If it was
-          # previously detached (someone above is still active), its entry
-          # is already gone and the final_frame is simply dropped.
           if handle.entry_id
             if final_frame && !final_frame.to_s.strip.empty?
-              Clacky::Logger.warn("[ph_debug] unreg_update_entry", oid: handle.object_id, eid: handle.entry_id)
               update_entry(handle.entry_id, @renderer.render_progress(final_frame))
             else
-              Clacky::Logger.warn("[ph_debug] unreg_remove_entry", oid: handle.object_id, eid: handle.entry_id)
               remove_entry(handle.entry_id)
             end
-          else
-            Clacky::Logger.warn("[ph_debug] unreg_no_entry_id", oid: handle.object_id)
           end
 
           @progress_stack.delete(handle)

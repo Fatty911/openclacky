@@ -654,7 +654,6 @@ module Clacky
 
       # Handle agent error/interrupt with cleanup
       def handle_agent_exception(ui_controller, agent, session_manager, exception)
-        Clacky::Logger.warn("[ph_debug] handle_agent_exception", klass: exception.class.name, msg: exception.message.to_s[0, 200])
         ui_controller.show_progress(phase: "done")
         ui_controller.set_idle_status
 

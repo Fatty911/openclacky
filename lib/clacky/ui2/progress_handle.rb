@@ -182,7 +182,6 @@ module Clacky
       # @param final_message [String, nil] Optional override for the last
       #   frame. If nil, the handle composes "<message>… (<elapsed>s)".
       def finish(final_message: nil)
-        Clacky::Logger.warn("[ph_debug] finish_entry", oid: object_id, state: @state, unreg: @unregistered, msg: @message, eid: @entry_id)
         snapshot = @monitor.synchronize do
           return if @unregistered
           first_close = @state == :running
@@ -201,10 +200,8 @@ module Clacky
           else
             compose_final_frame(snapshot[:message], snapshot[:elapsed])
           end
-        Clacky::Logger.warn("[ph_debug] finish_unregister", oid: object_id, eid: @entry_id, first_close: snapshot[:first_close], final_frame: final_frame.to_s[0, 200])
         @owner.unregister_progress(self, final_frame: final_frame)
         @monitor.synchronize { @unregistered = true }
-        Clacky::Logger.warn("[ph_debug] finish_done", oid: object_id)
       end
       alias_method :cancel, :finish
 
