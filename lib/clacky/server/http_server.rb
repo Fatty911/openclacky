@@ -5822,112 +5822,30 @@ module Clacky
 
       # Interrupt a running agent session.
       #
-      # Thread#raise alone is not reliable enough in practice — it's
-      # best-effort against blocked syscalls (socket writes, OpenSSL read,
-      # ConditionVariable#wait with a held mutex) and we've seen sessions
-      # that stay "running" forever even after multiple interrupt attempts.
+      # Thread#raise is best-effort: it unblocks most pure-Ruby waits and
+      # Faraday reads, but can't reach a thread stuck in a C-extension syscall
+      # until that syscall returns. We raise once and return immediately.
       #
-      # Strategy: three-tier escalation in a background watchdog Thread so
-      # the HTTP handler returns immediately.
-      #
-      #   Tier 1 (t=0): Thread#raise(AgentInterrupted).
-      #                 Unblocks most pure-Ruby waits and Faraday reads.
-      #                 Handles the common case.
-      #   Tier 2 (t=3): force-close this session's WebSocket connections
-      #                 so any send_raw stuck on socket write wakes up.
-      #                 Try Thread#raise again (idempotent).
-      #   Tier 3 (t=8): Thread#kill — last resort. Leaks any held
-      #                 resources but frees the session so the user can
-      #                 move on.
-      #
-      # Each transition is logged so that when users report "stuck
-      # sessions" we can see in the log whether tier 2/3 ever had to
-      # fire — that's our signal to dig deeper on the underlying block.
+      # Correctness of the *takeover* does not depend on the old thread dying
+      # promptly: each new task claims a fresh epoch (see run_agent_task), and
+      # any status write or UI broadcast from a superseded thread is fenced off
+      # by that epoch. A stale thread that lingers in a syscall is harmless — it
+      # self-terminates at the next check_stale! checkpoint, or when the syscall
+      # returns; either way it can no longer touch the live session.
       def interrupt_session(session_id)
-        thread = nil
         @registry.with_session(session_id) do |s|
           s[:idle_timer]&.cancel
           thread = s[:thread]
-
           next unless thread&.alive?
 
-          Clacky::Logger.info("[interrupt] session=#{session_id} tier=1 raise")
+          Clacky::Logger.info("[interrupt] session=#{session_id} raise")
           begin
             thread.raise(Clacky::AgentInterrupted, "Interrupted by user")
           rescue ThreadError => e
-            Clacky::Logger.warn("[interrupt] tier=1 raise failed: #{e.message}")
+            Clacky::Logger.warn("[interrupt] raise failed: #{e.message}")
           end
         end
-
-        return unless thread&.alive?
-
-        start_interrupt_watchdog(session_id, thread)
-      end
-
-      # Background watchdog: escalates from WebSocket force-close (tier 2)
-      # to Thread#kill (tier 3) if the agent thread refuses to die.
-      private def start_interrupt_watchdog(session_id, thread)
-        Thread.new do
-          Thread.current.name = "interrupt-watchdog[#{session_id}]" rescue nil
-
-          # Give the first Thread#raise a few seconds to unwind.
-          sleep 3
-          next unless thread.alive?
-
-          Clacky::Logger.warn(
-            "[interrupt] session=#{session_id} tier=2 raise failed after 3s, " \
-            "force-closing session resources"
-          )
-          force_close_session_sockets(session_id)
-          # Re-raise — sometimes the first raise was swallowed deep in a
-          # C-extension syscall; after we force-close the socket the
-          # syscall returns and the next raise sticks.
-          begin
-            thread.raise(Clacky::AgentInterrupted, "Interrupted by user (escalated)")
-          rescue ThreadError
-            # already dead between checks — fine
-          end
-
-          sleep 5
-          next unless thread.alive?
-
-          Clacky::Logger.error(
-            "[interrupt] session=#{session_id} tier=3 still alive after 8s, Thread#kill"
-          )
-          begin
-            thread.kill
-          rescue StandardError => e
-            Clacky::Logger.error("[interrupt] Thread#kill raised: #{e.class}: #{e.message}")
-          end
-
-          # Record the forced-kill so the UI can show a warning and operators
-          # can correlate with any backtrace dumps. The session is left in
-          # :idle state by run_agent_task's rescue clause; if the kill
-          # happened before the rescue could run, patch the state directly.
-          begin
-            @registry.update(session_id, status: :idle, error: "Force-killed (interrupt watchdog)")
-            broadcast_session_update(session_id)
-          rescue StandardError
-            # best effort
-          end
-        end
-      end
-
-      # Close every WebSocket connection bound to the given session. Used by
-      # the interrupt watchdog to unblock agent threads stuck in a WS write.
-      private def force_close_session_sockets(session_id)
-        conns = @ws_mutex.synchronize { (@ws_clients[session_id] || []).dup }
-        conns.each do |conn|
-          Clacky::Logger.warn(
-            "[interrupt] session=#{session_id} force-closing WS conn"
-          )
-          conn.force_close!
-        end
-      rescue StandardError => e
-        Clacky::Logger.error("[interrupt] force_close_session_sockets error: #{e.class}: #{e.message}")
-      end
-
-      # Run a task in a session immediately in the background, without waiting
+      end      # Run a task in a session immediately in the background, without waiting
       # for the client to subscribe. The user bubble is persisted via
       # display_text (Agent#run → history → replay_history), so the frontend
       # only needs to navigate over and load history — no realtime broadcast,
@@ -6008,11 +5926,19 @@ module Clacky
         # Cancel any pending idle compression before starting a new task
         idle_timer&.cancel
 
-        # Mark running BEFORE evict_excess_idle! — otherwise this session
+        # Claim a fresh epoch and mark running atomically-ish. The epoch
+        # fences this task against an interrupted-but-not-yet-dead predecessor:
+        # the old thread compares its epoch before writing status or
+        # broadcasting and silently drops anything once superseded. Without
+        # this a slow old thread could overwrite :running back to :idle (or
+        # close the new task's sockets), leaving the UI stuck "running".
+        #
+        # Marked running BEFORE evict_excess_idle! — otherwise this session
         # (still :idle here) can be evicted from the registry along with
         # other idle agents, breaking subsequent status updates and any
         # follow-up handle_user_message (which would early-return on
         # @registry.exist? == false).
+        epoch = @registry.claim_epoch(session_id)
         @registry.update(session_id, status: :running)
 
         # evict_excess_idle! serializes + writes 1 file per evicted session
@@ -6028,8 +5954,9 @@ module Clacky
         locale = Thread.current[:lang]
         thread = Thread.new do
           Thread.current[:lang] = locale
+          Thread.current[:task_epoch] = epoch
           task.call
-          @registry.update(session_id, status: :idle, error: nil)
+          next unless @registry.update_if_epoch(session_id, epoch, status: :idle, error: nil)
           broadcast_session_update(session_id)
           # Transient global signal for the optional task-complete sound. Sent to
           # all clients (broadcast_all) so a browser viewing another session — or
@@ -6040,7 +5967,9 @@ module Clacky
           # Start idle compression timer now that the agent is idle
           idle_timer&.start
         rescue Clacky::AgentInterrupted
-          @registry.update(session_id, status: :idle)
+          # A superseding task already owns the session — do not touch status
+          # or push UI events, they belong to the new epoch now.
+          next unless @registry.update_if_epoch(session_id, epoch, status: :idle)
           broadcast_session_update(session_id)
           broadcast(session_id, { type: "interrupted", session_id: session_id })
           @session_manager.save(agent.to_session_data(status: :interrupted))
@@ -6056,12 +5985,14 @@ module Clacky
           end
           user_message = e.respond_to?(:display_message) && e.display_message ? e.display_message : e.message
           raw_message  = e.respond_to?(:raw_message) ? e.raw_message : nil
-          @registry.update(session_id, status: :error, error: user_message, error_code: code, top_up_url: top_up_url, raw_message: raw_message)
+          next unless @registry.update_if_epoch(session_id, epoch, status: :error, error: user_message, error_code: code, top_up_url: top_up_url, raw_message: raw_message)
           broadcast_session_update(session_id)
           web_ui&.show_error(user_message, code: code, top_up_url: top_up_url, raw_message: raw_message)
           @session_manager.save(agent.to_session_data(status: :error, error_message: user_message, raw_message: raw_message))
         end
-        @registry.with_session(session_id) { |s| s[:thread] = thread }
+        # Register the thread only if we still own the epoch; a faster
+        # superseding task may have already replaced it.
+        @registry.with_session(session_id) { |s| s[:thread] = thread if s[:epoch].to_i == epoch.to_i }
       end
 
       # ── WebSocket subscription management ─────────────────────────────────────
@@ -6091,6 +6022,15 @@ module Clacky
       # removed automatically. Connections already marked closed are skipped
       # upfront so one sluggish client can't delay delivery to healthy ones.
       def broadcast(session_id, event)
+        # Drop events emitted by a superseded agent thread. A thread carrying a
+        # :task_epoch only gets through while it still owns the session; an
+        # interrupted-but-unwinding old thread (e.g. a late show_progress
+        # "done" from an ensure block) is silently dropped so it can't disturb
+        # the new task's UI. Threads without :task_epoch (HTTP handlers, the
+        # task supervisor itself) are never affected.
+        my_epoch = Thread.current[:task_epoch]
+        return if my_epoch && @registry.current_epoch(session_id) != my_epoch
+
         clients = @ws_mutex.synchronize { (@ws_clients[session_id] || []).dup }
         dead = []
         clients.each do |conn|

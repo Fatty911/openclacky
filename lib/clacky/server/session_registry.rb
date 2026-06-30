@@ -49,6 +49,7 @@ module Clacky
           agent:                nil,
           ui:                   nil,
           thread:               nil,
+          epoch:                0,
           idle_timer:           nil,
           pending_task:         nil,
           pending_working_dir:  nil
@@ -131,6 +132,40 @@ module Clacky
         @mutex.synchronize do
           session = @sessions[session_id]
           return false unless session
+
+          fields[:updated_at] = Time.now
+          session.merge!(fields)
+          true
+        end
+      end
+
+      # Atomically bump the session's task epoch and return the new value.
+      # Each user message that starts a task claims a fresh epoch; a stale task
+      # thread (interrupted but not yet dead) compares its epoch against the
+      # current one and discards any side effects (status writes, broadcasts)
+      # once it has been superseded.
+      def claim_epoch(session_id)
+        @mutex.synchronize do
+          session = @sessions[session_id]
+          return nil unless session
+
+          session[:epoch] = session[:epoch].to_i + 1
+        end
+      end
+
+      # Current task epoch for a session (0 if none / unknown).
+      def current_epoch(session_id)
+        @mutex.synchronize { @sessions[session_id]&.fetch(:epoch, 0).to_i }
+      end
+
+      # Update fields only if the caller still owns the current epoch. Returns
+      # true if the update was applied, false if the epoch was stale (a newer
+      # task has taken over) or the session is gone.
+      def update_if_epoch(session_id, epoch, **fields)
+        @mutex.synchronize do
+          session = @sessions[session_id]
+          return false unless session
+          return false unless session[:epoch].to_i == epoch.to_i
 
           fields[:updated_at] = Time.now
           session.merge!(fields)

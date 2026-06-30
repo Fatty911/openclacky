@@ -229,4 +229,42 @@ RSpec.describe Clacky::Server::SessionRegistry do
       expect(seen).to be_empty
     end
   end
+
+  describe "epoch fencing" do
+    let(:registry) { described_class.new(agent_config: default_config) }
+
+    it "starts at epoch 0 and bumps monotonically on claim" do
+      registry.create(session_id: "s1")
+      expect(registry.current_epoch("s1")).to eq(0)
+      expect(registry.claim_epoch("s1")).to eq(1)
+      expect(registry.claim_epoch("s1")).to eq(2)
+      expect(registry.current_epoch("s1")).to eq(2)
+    end
+
+    it "returns nil / 0 for unknown sessions" do
+      expect(registry.claim_epoch("missing")).to be_nil
+      expect(registry.current_epoch("missing")).to eq(0)
+    end
+
+    it "applies update_if_epoch only when the epoch still matches" do
+      registry.create(session_id: "s1")
+      epoch = registry.claim_epoch("s1")
+
+      expect(registry.update_if_epoch("s1", epoch, status: :idle)).to be(true)
+      expect(registry.get("s1")[:status]).to eq(:idle)
+    end
+
+    it "drops a stale update once a newer task has claimed the session" do
+      registry.create(session_id: "s1")
+      old_epoch = registry.claim_epoch("s1")
+      registry.update("s1", status: :running)
+
+      # A newer task takes over.
+      registry.claim_epoch("s1")
+
+      # The old task's late completion must not flip status back to :idle.
+      expect(registry.update_if_epoch("s1", old_epoch, status: :idle)).to be(false)
+      expect(registry.get("s1")[:status]).to eq(:running)
+    end
+  end
 end
