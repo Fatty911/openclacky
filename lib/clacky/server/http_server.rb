@@ -375,6 +375,8 @@ module Clacky
             self.send(:serve_agent_ui, req, res)
           elsif req.path.start_with?("/panel_ui/")
             self.send(:serve_panel_ui, req, res)
+          elsif req.path.start_with?("/ext_ui/")
+            self.send(:serve_ext_ui, req, res)
           else
             file_handler.service(req, res)
             res["Cache-Control"] = "no-store"
@@ -390,6 +392,11 @@ module Clacky
         # and other host helpers as soon as they are wired up.
         # The loader logs its own summary via Clacky::Logger.
         Clacky::ApiExtensionLoader.load_all
+
+        # Then load api backends contributed by ext.yml containers (panels with
+        # an `api:` field + top-level `api:` units). Appended after the call
+        # above so they share the registry instead of being reset away.
+        load_container_api_extensions
 
         # Start the background scheduler
         @scheduler.start
@@ -1058,7 +1065,29 @@ module Clacky
           global_ext_script_tags,
           agent_webui_script_tags,
           official_panel_script_tags,
+          container_ext_script_tags,
         ].reject(&:empty?).join("\n")
+      end
+
+      # Container extensions (ext.yml): inject each declared panel's view.js,
+      # tagged per its scope. scope=global → all agents; scope=agent:<name> →
+      # that agent only. Served from /ext_ui/<ext_id>/<rel> with no-store so
+      # edits go live on page refresh. Never raises.
+      private def container_ext_script_tags
+        result = Clacky::ExtensionLoader.load_all
+        result.panels.map do |unit|
+          rel    = unit.spec["view"]
+          ext_id = "ext/#{unit.ext_id}/#{unit.id}"
+          src    = "/ext_ui/#{unit.ext_id}/#{rel}"
+          scope  = unit.spec["scope"].to_s
+          agents = scope.start_with?("agent:") ? [scope.delete_prefix("agent:")] : nil
+          "<script>Clacky.ext._extBegin(#{ext_id.to_json}, #{agents.to_json}, #{nil.to_json})</script>" \
+            "<script src=#{src.to_json} data-ext-id=#{ext_id.to_json}></script>" \
+            "<script>Clacky.ext._extEnd()</script>"
+        end.join("\n")
+      rescue StandardError => e
+        Clacky::Logger.warn("[ExtensionLoader] panel injection failed: #{e.message}")
+        ""
       end
 
       # Inline script registering the panel→agents map (which agent profiles
@@ -1206,6 +1235,60 @@ module Clacky
         abs = File.expand_path(File.join(BUILTIN_EXT_ROOT, rel))
 
         unless abs.start_with?(BUILTIN_EXT_ROOT + File::SEPARATOR) && File.file?(abs)
+          res.status = 404
+          res.body   = "not found"
+          return
+        end
+
+        ext = File.extname(abs)
+        ctype = { ".js" => "application/javascript", ".css" => "text/css" }[ext]
+        unless ctype
+          res.status = 415
+          res.body   = "unsupported media type"
+          return
+        end
+
+        res.status           = 200
+        res["Content-Type"]  = ctype
+        res["Cache-Control"] = "no-store"
+        res["Pragma"]        = "no-cache"
+        res.body             = File.read(abs)
+      end
+
+      # Load api backends declared by ext.yml containers into the shared
+      # ApiExtension registry. Each unit mounts at /api/ext/<ext_id>/. Failures
+      # are isolated per unit and logged; never aborts startup.
+      private def load_container_api_extensions
+        result = Clacky::ExtensionLoader.load_all
+        result.api.each do |unit|
+          r = Clacky::ApiExtensionLoader::Result.new(loaded: [], skipped: [])
+          Clacky::ApiExtensionLoader.load_one(unit.ext_id, unit.dir, unit.spec["handler_abs"], r)
+          r.skipped.each { |(id, reason)| Clacky::Logger.warn("[ExtensionLoader] skip api #{id}: #{reason}") }
+        end
+        result.errors.each do |e|
+          Clacky::Logger.warn("[ExtensionLoader] #{e.ext_id} #{e.unit} — #{e.message}")
+        end
+      rescue StandardError => e
+        Clacky::Logger.error("[ExtensionLoader] container api load failed: #{e.message}")
+      end
+
+      # Serve a file from a resolved extension container: /ext_ui/<ext_id>/<rel>.
+      # The container dir is looked up via the loader (it may live in any layer),
+      # then strict path containment prevents escaping it. JS/CSS only, no-store.
+      private def serve_ext_ui(req, res)
+        rel = req.path.delete_prefix("/ext_ui/")
+        ext_id, _, sub = rel.partition("/")
+
+        unit = Clacky::ExtensionLoader.load_all.units.find { |u| u.ext_id == ext_id }
+        unless unit
+          res.status = 404
+          res.body   = "not found"
+          return
+        end
+
+        root = File.expand_path(unit.dir)
+        abs  = File.expand_path(File.join(root, sub))
+        unless abs.start_with?(root + File::SEPARATOR) && File.file?(abs)
           res.status = 404
           res.body   = "not found"
           return

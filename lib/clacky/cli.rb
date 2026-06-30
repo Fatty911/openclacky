@@ -7,6 +7,7 @@ require_relative "ui2"
 require_relative "json_ui_controller"
 require_relative "plain_ui_controller"
 require_relative "brand_config"
+require_relative "extension/cli_commands"
 
 module Clacky
   class CLI < Thor
@@ -1121,7 +1122,7 @@ module Clacky
     LONGDESC
     option :desc, type: :string, aliases: "-d", default: "", desc: "Short description"
     def patch_new(id, target)
-      require_relative "patch_loader"
+      require_relative "extension/patch_loader"
       path = Clacky::PatchLoader.scaffold(id, target, description: options[:desc])
       puts "Created patch: #{path}"
       puts "Edit patch.rb, then run: clacky patch_verify"
@@ -1269,6 +1270,9 @@ module Clacky
         end
       end
     end
+
+    desc "ext SUBCOMMAND", "Manage extension containers (new, verify, list, reload)"
+    subcommand "ext", Clacky::CliExtensionCommands
 
     desc "billing", "Show billing summary and usage statistics"
     long_desc <<-LONGDESC

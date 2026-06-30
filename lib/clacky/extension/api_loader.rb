@@ -12,13 +12,13 @@ module Clacky
   # isolated: skipped with a logged warning, never aborts the load of others.
   module ApiExtensionLoader
     DEFAULT_DIR  = File.expand_path("~/.clacky/api_ext")
-    BUILTIN_DIR  = File.expand_path("../default_extensions", __FILE__)
+    BUILTIN_DIR  = File.expand_path("../default_extensions", __dir__)
     DISABLED_DIR = "_disabled"
 
     Result = Struct.new(:loaded, :skipped, keyword_init: true)
 
     class << self
-      def load_all(dir: DEFAULT_DIR, builtin: true)
+      def load_all(dir: DEFAULT_DIR, builtin: true, reload: false)
         result = Result.new(loaded: [], skipped: [])
         Clacky::ApiExtension.reset_registry!
 
@@ -28,7 +28,7 @@ module Clacky
             ext_dir = File.dirname(handler_path)
             ext_id  = File.basename(ext_dir)
             next if ext_id.start_with?("_")
-            load_one(ext_id, ext_dir, handler_path, result)
+            load_one(ext_id, ext_dir, handler_path, result, reload: reload)
           end
         end
 
@@ -38,7 +38,7 @@ module Clacky
             ext_dir = File.dirname(handler_path)
             ext_id  = File.basename(ext_dir)
             next if ext_id == DISABLED_DIR || ext_id.start_with?("_")
-            load_one(ext_id, ext_dir, handler_path, result)
+            load_one(ext_id, ext_dir, handler_path, result, reload: reload)
           end
         end
 
@@ -51,14 +51,60 @@ module Clacky
         @last_result || load_all
       end
 
-      def load_one(ext_id, ext_dir, handler_path, result)
+      # Per-request hot path: ensure the handler for `ext_id` is loaded and up to
+      # date before the dispatcher looks it up. Resolves the handler file across
+      # all sources (builtin < loose api_ext < ext.yml container, highest wins),
+      # then (re)loads it only when it is new or its mtime changed. This is what
+      # makes edits to a handler take effect on the next request with no restart.
+      def ensure_fresh(ext_id)
+        path = resolve_handler_path(ext_id)
+        return unless path
+
+        mtime = File.mtime(path).to_f
+        cached = handler_mtimes[ext_id]
+        return if cached && cached[:path] == path && cached[:mtime] == mtime &&
+                  Clacky::ApiExtension.registry.key?(ext_id)
+
+        r = Result.new(loaded: [], skipped: [])
+        load_one(ext_id, File.dirname(path), path, r, reload: true)
+        handler_mtimes[ext_id] = { path: path, mtime: mtime }
+        r.skipped.each { |(id, reason)| log_skip(id, reason) }
+      rescue StandardError => e
+        Clacky::Logger.warn("[ApiExtensionLoader] ensure_fresh(#{ext_id}) failed: #{e.message}")
+      end
+
+      private def handler_mtimes
+        @handler_mtimes ||= {}
+      end
+
+      private def resolve_handler_path(ext_id)
+        container = Clacky::ExtensionLoader.load_all.api.find { |u| u.ext_id == ext_id }
+        return container.spec["handler_abs"] if container
+
+        loose = File.join(DEFAULT_DIR, ext_id, "handler.rb")
+        return loose if File.file?(loose)
+
+        builtin = File.join(BUILTIN_DIR, ext_id, "handler.rb")
+        return builtin if File.file?(builtin)
+
+        nil
+      end
+
+      def load_one(ext_id, ext_dir, handler_path, result, reload: false)
         meta = read_meta(ext_dir)
         before = Clacky::ApiExtension.pending_subclasses.size
 
-        require handler_path
+        existing = reload ? Clacky::ApiExtension.registry[ext_id] : nil
+        existing&.reset_routes!
+
+        # `load` (not `require`) when reloading so edited handlers re-execute —
+        # `require` evaluates a path only once per process. When the class
+        # constant already exists, `load` reopens it instead of triggering
+        # `inherited`, so we fall back to the registered klass below.
+        reload ? load(handler_path) : require(handler_path)
 
         new_subclasses = Clacky::ApiExtension.pending_subclasses[before..] || []
-        klass = new_subclasses.last
+        klass = new_subclasses.last || existing
 
         unless klass
           result.skipped << [ext_id, "no Clacky::ApiExtension subclass defined in handler.rb"]

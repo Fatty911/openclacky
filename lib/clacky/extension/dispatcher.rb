@@ -20,6 +20,10 @@ module Clacky
           ext_id, sub_path = parse_path(req.path)
           return not_found(res, "extension id missing") unless ext_id
 
+          # Lazily (re)load the handler on each request so edits to handler.rb take
+          # effect with no restart — cheap for a local app with a handful of exts.
+          Clacky::ApiExtensionLoader.ensure_fresh(ext_id)
+
           klass = Clacky::ApiExtension.registry[ext_id]
           return not_found(res, "extension '#{ext_id}' not found") unless klass
 
@@ -50,6 +54,9 @@ module Clacky
 
           klass.public_paths.include?(route.pattern)
         end
+
+        # Local-app convenience: see ApiExtensionLoader.ensure_fresh — that is
+        # the single source of truth for per-request hot reload.
 
         private def parse_path(path)
           return [nil, nil] unless path.to_s.start_with?(MOUNT_PREFIX)

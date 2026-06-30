@@ -81,6 +81,14 @@ module Clacky
         @public_paths ||= []
       end
 
+      # Clears accumulated route/public-path state so a force-reload (`load`) of
+      # a named-constant handler re-registers its routes from scratch instead of
+      # appending duplicates onto the reopened class.
+      def reset_routes!
+        @routes = []
+        @public_paths = []
+      end
+
       def ext_id
         @ext_id
       end
