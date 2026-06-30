@@ -193,8 +193,18 @@ module Clacky
         recent_messages = get_recent_messages_with_tool_pairs(all_messages, target_recent_count)
         recent_messages = [] if recent_messages.nil?
 
+        # Surface the most recent chunk's topics so the compression LLM can judge
+        # whether this conversation continues the same task (drives chunk merging).
+        previous_topics = nil
+        if @session_id && @created_at
+          latest = session_manager.chunks_for_current(@session_id, @created_at).last
+          previous_topics = latest && latest[:topics]
+        end
+
         # Build compression instruction message (to be inserted into conversation)
-        compression_message = @message_compressor.build_compression_message(all_messages, recent_messages: recent_messages)
+        compression_message = @message_compressor.build_compression_message(
+          all_messages, recent_messages: recent_messages, previous_topics: previous_topics
+        )
 
         return nil if compression_message.nil?
 
@@ -242,25 +252,52 @@ module Clacky
         # all chunk file I/O (naming, writing, discovery) — we just ask it.
         sm = session_manager
         existing_chunks = sm.chunks_for_current(@session_id, @created_at)
-        chunk_index = sm.next_chunk_index(@session_id, @created_at)
 
         # Extract topics from the LLM response to store in both the chunk MD front
         # matter and the compressed_summary message hash (for future chunk indexing).
         topics = @message_compressor.parse_topics(compressed_content)
 
-        chunk_path = save_compressed_chunk(
-          original_messages,
-          compression_context[:recent_messages],
-          chunk_index: chunk_index,
-          compression_level: compression_context[:compression_level],
-          topics: topics
-        )
+        # Decide whether to MERGE into the previous chunk or create a NEW one.
+        # The LLM judges (via <continues_previous>) whether this conversation is a
+        # direct continuation of the previous chunk's task. Merging avoids tiny
+        # fragmented chunks (e.g. a long task compressed mid-flight into 2-message
+        # chunks) that pollute the topics index and degrade recall.
+        latest_chunk = existing_chunks.last
+        continues = latest_chunk && @message_compressor.parse_continues_previous(compressed_content)
+
+        if continues
+          chunk_path = merge_into_previous_chunk(
+            latest_chunk,
+            original_messages,
+            compression_context[:recent_messages],
+            compression_level: compression_context[:compression_level],
+            topics: topics
+          )
+          # Fallback to new chunk if the merge could not be performed.
+          chunk_path ||= save_compressed_chunk(
+            original_messages, compression_context[:recent_messages],
+            chunk_index: sm.next_chunk_index(@session_id, @created_at),
+            compression_level: compression_context[:compression_level], topics: topics
+          )
+          # The merged chunk is the current chunk — exclude it from previous_chunks.
+          index_chunks = existing_chunks.reject { |c| c[:index] == latest_chunk[:index] }
+        else
+          chunk_index = sm.next_chunk_index(@session_id, @created_at)
+          chunk_path = save_compressed_chunk(
+            original_messages,
+            compression_context[:recent_messages],
+            chunk_index: chunk_index,
+            compression_level: compression_context[:compression_level],
+            topics: topics
+          )
+          index_chunks = existing_chunks
+        end
 
         # Build previous_chunks index from the disk-discovered chunks (already
         # sorted by index ascending). This gives the new summary a complete
         # chronological index of all older archives so the AI can recall any
         # past chunk via file_reader, not just the most recent one.
-        previous_chunks = existing_chunks.map do |c|
+        previous_chunks = index_chunks.map do |c|
           { basename: c[:basename], path: c[:path], topics: c[:topics] }
         end
 
@@ -483,6 +520,62 @@ module Clacky
         nil
       end
 
+      # Merge the current batch of compressed messages INTO an existing chunk
+      # (overwrite-in-place, same chunk index). Used when the LLM judged this
+      # conversation as a continuation of the previous chunk's task. Keeps the
+      # archive on a single, growing, well-formed chunk instead of fragmenting
+      # into tiny standalone files that pollute the topics index.
+      #
+      # Every write hits disk immediately, so a crash never loses archived
+      # messages — there is no in-memory buffering.
+      #
+      # @param prev_chunk [Hash] disk-discovered chunk hash ({ index:, path:, topics: })
+      # @return [String, nil] the chunk path on success, nil if merge not possible
+      def merge_into_previous_chunk(prev_chunk, original_messages, recent_messages, compression_level:, topics: nil)
+        return nil unless @session_id && @created_at
+
+        recent_set = recent_messages.to_a
+        messages_to_archive = original_messages.reject do |m|
+          m[:role] == "system" || m[:system_injected] || m[:compressed_summary] || recent_set.include?(m)
+        end
+        return nil if messages_to_archive.empty?
+
+        sm = session_manager
+        raw = sm.read_chunk(prev_chunk[:path])
+        return nil unless raw
+
+        fm, body = sm.split_chunk_md(raw)
+        return nil unless fm
+
+        new_sections = render_message_sections(messages_to_archive)
+
+        fm["compression_level"] = compression_level.to_s
+        fm["archived_at"]       = Time.now.iso8601
+        fm["message_count"]     = (fm["message_count"].to_i + messages_to_archive.size).to_s
+        fm["merged_count"]      = (fm.fetch("merged_count", "1").to_i + 1).to_s
+        fm["topics"]            = merge_topics(fm["topics"], topics)
+
+        lines = ["---"]
+        fm.each { |k, v| lines << "#{k}: #{v}" }
+        lines << "---"
+        lines << body.rstrip
+        lines << ""
+        lines.concat(new_sections)
+
+        sm.write_chunk(@session_id, @created_at, prev_chunk[:index], lines.join("\n"))
+      rescue => e
+        @ui&.log("Failed to merge chunk MD: #{e.message}", level: :warn)
+        nil
+      end
+
+      # Union two comma-separated topic strings, preserving order, dropping dups.
+      private def merge_topics(existing, incoming)
+        a = (existing || "").split(/\s*,\s*/).map(&:strip).reject(&:empty?)
+        b = (incoming || "").split(/\s*,\s*/).map(&:strip).reject(&:empty?)
+        merged = (a + b).uniq
+        merged.empty? ? nil : merged.join(", ")
+      end
+
       # Build markdown content from a list of messages
       # @param messages [Array<Hash>] Messages to render
       # @param chunk_index [Integer] Chunk number for metadata
@@ -508,6 +601,15 @@ module Clacky
         lines << "> Use `file_reader` to recall specific details from this conversation."
         lines << ""
 
+        lines.concat(render_message_sections(messages))
+
+        lines.join("\n")
+      end
+
+      # Render messages into chunk MD body sections (no front matter / header).
+      # Shared by build_chunk_md and the chunk-merge path.
+      def render_message_sections(messages)
+        lines = []
         messages.each do |msg|
           role = msg[:role]
           content = msg[:content]
@@ -560,8 +662,7 @@ module Clacky
             lines << ""
           end
         end
-
-        lines.join("\n")
+        lines
       end
 
       # Format message content (handles string or array of content blocks)

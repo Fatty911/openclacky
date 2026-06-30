@@ -163,6 +163,33 @@ module Clacky
       chunk_path
     end
 
+    # Read the raw markdown of a chunk file. Returns nil if missing.
+    def read_chunk(chunk_path)
+      return nil unless chunk_path && File.exist?(chunk_path)
+      File.read(chunk_path)
+    end
+
+    # Split raw chunk markdown into [front_matter_hash, body_string].
+    # front_matter_hash preserves insertion order; body is everything after
+    # the closing "---". Returns [nil, raw] when there is no leading block.
+    def split_chunk_md(raw)
+      return [nil, raw.to_s] unless raw.to_s.start_with?("---")
+
+      fm_end = raw.index("\n---\n", 4)
+      return [nil, raw] unless fm_end
+
+      fm_text = raw[4...fm_end]
+      body    = raw[(fm_end + 5)..] || ""
+
+      fm = {}
+      fm_text.each_line do |line|
+        k, _, v = line.chomp.partition(":")
+        next if k.strip.empty?
+        fm[k.strip] = v.strip
+      end
+      [fm, body]
+    end
+
     # All sessions from disk, newest-first (sorted by last activity / updated_at,
     # falling back to created_at for legacy sessions without updated_at).
     # Optional filters:

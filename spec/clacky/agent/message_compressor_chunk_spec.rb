@@ -269,6 +269,39 @@ RSpec.describe "Compression chunk MD archiving" do
       end
     end
 
+    describe "#parse_continues_previous" do
+      let(:compressor) { described_class.new(nil) }
+
+      it "returns true only for an explicit true tag" do
+        expect(compressor.parse_continues_previous("<continues_previous>true</continues_previous>")).to be true
+      end
+
+      it "returns false for an explicit false tag" do
+        expect(compressor.parse_continues_previous("<continues_previous>false</continues_previous>")).to be false
+      end
+
+      it "returns false when the tag is missing" do
+        expect(compressor.parse_continues_previous("<topics>x</topics><summary>y</summary>")).to be false
+      end
+
+      it "returns false for nil or empty content" do
+        expect(compressor.parse_continues_previous(nil)).to be false
+        expect(compressor.parse_continues_previous("")).to be false
+      end
+
+      it "is case-insensitive and tolerant of whitespace" do
+        expect(compressor.parse_continues_previous("<continues_previous> TRUE </continues_previous>")).to be true
+      end
+
+      it "strips the tag from the rebuilt summary content" do
+        result = compressor.parse_compressed_result(
+          "<continues_previous>true</continues_previous>\n<summary>Body</summary>",
+          chunk_path: "/tmp/chunk-1.md"
+        )
+        expect(result.first[:content]).not_to include("continues_previous")
+      end
+    end
+
     describe "#parse_compressed_result" do
       let(:compressor) { described_class.new(nil) }
 
@@ -846,6 +879,89 @@ RSpec.describe "Compression chunk MD archiving" do
       # Exactly 5 unique chunk indexes
       indexes = chunk_files.map { |n| n[/-chunk-(\d+)\.md\z/, 1].to_i }.sort
       expect(indexes).to eq([1, 2, 3, 4, 5])
+    end
+
+    # ── chunk merging: <continues_previous> drives overwrite-in-place ──────────
+    #
+    # Same as run_compression_round but lets the caller control the LLM-judged
+    # continuation flag, so we can exercise the merge vs new-chunk branch.
+    def run_compression_round_with_continuation(agent, round_number, continues:)
+      system = { role: "system", content: "System prompt" }
+      pre_existing = agent.history.to_a
+      new_turns = 6.times.flat_map do |i|
+        [
+          { role: "user", content: "round #{round_number} user msg #{i}" },
+          { role: "assistant", content: "round #{round_number} reply #{i}" }
+        ]
+      end
+      if pre_existing.empty?
+        agent.history = Clacky::MessageHistory.new([system, *new_turns])
+      else
+        agent.history.replace_all(pre_existing + new_turns)
+      end
+
+      all = agent.history.to_a
+      recent_messages = all.last(4)
+      compression_context = {
+        recent_messages: recent_messages,
+        original_token_count: 50_000,
+        original_message_count: all.size,
+        compression_level: round_number
+      }
+      agent.history.append({ role: "user", content: "compress please", system_injected: true })
+
+      fake_response = {
+        content: "<topics>Round #{round_number} topics</topics>\n" \
+                 "<continues_previous>#{continues}</continues_previous>\n" \
+                 "<summary>Round #{round_number} summary body</summary>"
+      }
+      agent.send(:handle_compression_response, fake_response, compression_context)
+
+      sm = Clacky::SessionManager.new(sessions_dir: sessions_dir)
+      [sm.chunks_for_current(agent.session_id, agent.created_at),
+       agent.history.to_a.find { |m| m[:compressed_summary] }]
+    end
+
+    it "merges into the previous chunk when LLM says <continues_previous>true</continues_previous>" do
+      run_compression_round_with_continuation(full_agent, 1, continues: false)
+      chunks_after_merge, summary = run_compression_round_with_continuation(full_agent, 2, continues: true)
+
+      # Only ONE chunk file exists — round 2 merged into chunk-1 instead of creating chunk-2
+      expect(chunks_after_merge.map { |c| c[:index] }).to eq([1])
+
+      merged_path = chunks_after_merge.first[:path]
+      content = File.read(merged_path)
+
+      # Both rounds' content live in the single chunk
+      expect(content).to include("round 1 user msg")
+      expect(content).to include("round 2 user msg")
+
+      # Front matter reflects the merge
+      expect(content).to include("merged_count: 2")
+      expect(content).to include("Round 1 topics")
+      expect(content).to include("Round 2 topics")
+
+      # The summary references the merged chunk and does NOT list it as a previous chunk
+      expect(summary[:content]).to include("chunk-1.md")
+      expect(summary[:content]).not_to include("Previous chunks")
+    end
+
+    it "creates a new chunk when LLM says false, even after a prior merge" do
+      run_compression_round_with_continuation(full_agent, 1, continues: false)
+      run_compression_round_with_continuation(full_agent, 2, continues: true)   # merged into chunk-1
+      chunks, summary = run_compression_round_with_continuation(full_agent, 3, continues: false) # new chunk-2
+
+      expect(chunks.map { |c| c[:index] }).to eq([1, 2])
+      # New summary indexes the earlier chunk-1 as a previous chunk
+      expect(summary[:content]).to include("Previous chunks")
+      expect(summary[:content]).to include("chunk-1.md")
+    end
+
+    it "does not merge on the first compression even if LLM says true (no previous chunk)" do
+      chunks, _summary = run_compression_round_with_continuation(full_agent, 1, continues: true)
+      # No previous chunk existed, so a fresh chunk-1 is created
+      expect(chunks.map { |c| c[:index] }).to eq([1])
+      expect(File.read(chunks.first[:path])).not_to include("merged_count")
     end
   end
 end
