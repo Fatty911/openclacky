@@ -4354,7 +4354,8 @@ module Clacky
             total_tasks: s.dig(:stats, :total_tasks) || 0,
             file_size:   s[:file_size] || 0,
             model:       s[:model],
-            working_dir: s[:working_dir]
+            working_dir: s[:working_dir],
+            source:      s[:source]
           }
         end
 

@@ -9913,6 +9913,30 @@ body.setup-mode[data-theme="dark"] {
   color: var(--color-text-muted);
   margin-right: auto;
 }
+.trash-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.trash-filter-chip {
+  font-size: 0.6875rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 5px;
+  border: 1px solid var(--color-border-primary);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.trash-filter-chip:hover {
+  border-color: var(--color-accent-primary);
+  color: var(--color-text-primary);
+}
+.trash-filter-chip.active {
+  background: var(--color-accent-primary);
+  border-color: var(--color-accent-primary);
+  color: #fff;
+}
 .trash-actions {
   display: flex;
   align-items: center;

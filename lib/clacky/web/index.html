@@ -664,6 +664,11 @@
         </div>
 
         <div class="trash-toolbar">
+          <div class="trash-filter-bar" id="trash-filter-bar" style="display:none">
+            <button class="trash-filter-chip active" data-filter="all" data-i18n="trash.filterAll">All</button>
+            <button class="trash-filter-chip" data-filter="manual" data-i18n="trash.filterManual">Regular</button>
+            <button class="trash-filter-chip" data-filter="cron" data-i18n="trash.filterCron">Scheduled</button>
+          </div>
           <span class="trash-summary" id="trash-summary"></span>
           <div class="trash-actions">
             <button id="btn-trash-refresh" class="btn-trash-action" title="Refresh">
