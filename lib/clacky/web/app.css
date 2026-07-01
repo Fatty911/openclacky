@@ -784,6 +784,21 @@ body {
 .session-item.active .session-badge--coding {
   color: var(--color-text-tertiary);
 }
+/* Agent profile: extension / custom agents — same hollow neutral base as
+   coding, but a subtle accent tint keeps user-defined agents visually
+   distinct from the built-in "coding" tag. */
+.session-badge--agent   {
+  background: transparent;
+  color: var(--color-accent-primary);
+  border-color: var(--color-accent-soft);
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-item.active .session-badge--agent {
+  border-color: var(--color-accent-primary);
+}
 
 
 /* ── Sidebar divider actions group ───────────────────────────────────────── */
