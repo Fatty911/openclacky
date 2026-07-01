@@ -87,7 +87,17 @@ module Clacky
       # Scan all layers, resolve overrides, return a structured Result.
       # `layers` maps layer name => root dir; defaults to the real three-layer
       # dirs. Tests inject temp dirs through it.
-      def load_all(layers: default_layers)
+      #
+      # Cached by a fingerprint of every container's `ext.yml` mtime — a hot
+      # path (per web request, per API call) hits the cache; the moment any
+      # manifest changes, we invalidate and rescan. Pass `force: true` to
+      # bypass the cache (used by CLI / tests).
+      def load_all(layers: default_layers, force: false)
+        fingerprint = fingerprint_layers(layers)
+        if !force && @last_result && @last_fingerprint == fingerprint
+          return @last_result
+        end
+
         by_id = {}          # ext_id => resolved container (winning layer)
         overridden = []     # [ext_id, losing_layer, winning_layer]
         errors = []
@@ -117,6 +127,7 @@ module Clacky
         by_id.each_value { |container| resolve_units(container, result) }
 
         @last_result = result
+        @last_fingerprint = fingerprint
         result
       end
 
@@ -126,6 +137,35 @@ module Clacky
 
       def last_result
         @last_result || load_all
+      end
+
+      # Discard the mtime cache so the next `load_all` rescans from disk.
+      # Used by CLI commands that mutate the ext tree (new / pack).
+      def invalidate_cache!
+        @last_fingerprint = nil
+      end
+
+      # A layer's fingerprint is the sorted list of "<ext_id>|<mtime>" for
+      # every container manifest present. Cheap to compute (one stat per
+      # manifest); the whole map compared as a Hash so a container appearing
+      # or disappearing also invalidates.
+      private def fingerprint_layers(layers)
+        layers.each_with_object({}) do |(layer, root), acc|
+          next unless root && Dir.exist?(root)
+
+          entries = []
+          Dir.children(root).sort.each do |ext_id|
+            next if ext_id.start_with?("_", ".")
+            manifest = File.join(root, ext_id, MANIFEST)
+            next unless File.file?(manifest)
+
+            entries << [ext_id, File.mtime(manifest).to_f]
+          end
+          acc[layer] = entries
+        end
+      rescue StandardError
+        # On any stat error just return a unique object so we always rescan.
+        Object.new
       end
 
       private def read_container(ext_id, layer, dir, manifest, errors)
@@ -156,6 +196,8 @@ module Clacky
         contributes = container[:contributes]
         return unless contributes.is_a?(Hash)
 
+        api_ids_seen = {}   # id => "panel"|"api" (which contribution declared it first)
+
         Array(contributes["panels"]).each do |spec|
           unit = build_panel_unit(container, spec, result.errors)
           next unless unit
@@ -165,13 +207,30 @@ module Clacky
           # by the panel id so the panel's fetch() calls resolve at runtime.
           if spec["api"]
             api_unit = build_api_unit(container, { "id" => spec["id"], "handler" => spec["api"] }, result.errors)
-            result.api << api_unit if api_unit
+            if api_unit
+              result.api << api_unit
+              api_ids_seen[api_unit.id] = "panel"
+            end
           end
         end
 
         Array(contributes["api"]).each do |spec|
           unit = build_api_unit(container, spec, result.errors)
-          result.api << unit if unit
+          next unless unit
+
+          if api_ids_seen[unit.id]
+            result.errors << Error.new(
+              ext_id: container[:ext_id], layer: container[:layer].to_s,
+              unit: "api/#{unit.id}",
+              message: "api id #{unit.id.inspect} already contributed by a panel with the same id — " \
+                       "rename one or drop the panel's `api:` field",
+              file: File.join(container[:dir], "ext.yml")
+            )
+            next
+          end
+
+          result.api << unit
+          api_ids_seen[unit.id] = "api"
         end
 
         Array(contributes["skills"]).each do |spec|

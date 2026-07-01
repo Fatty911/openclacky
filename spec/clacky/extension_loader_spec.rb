@@ -469,4 +469,103 @@ RSpec.describe Clacky::ExtensionLoader do
       expect(result.errors.first.message).to match(/hook file not found/)
     end
   end
+
+  describe "manifest mtime cache" do
+    let(:manifest_v1) do
+      <<~YAML
+        id: cached
+        origin: self
+        contributes:
+          api:
+            - id: cached
+              handler: handler.rb
+      YAML
+    end
+
+    let(:manifest_v2) do
+      <<~YAML
+        id: cached
+        name: renamed
+        origin: self
+        contributes:
+          api:
+            - id: cached
+              handler: handler.rb
+      YAML
+    end
+
+    it "returns the exact same Result object on repeated calls with unchanged manifests" do
+      make_container(local, "cached", manifest: manifest_v1, files: { "handler.rb" => "# handler" })
+
+      first = described_class.load_all(layers: layers)
+      second = described_class.load_all(layers: layers)
+
+      expect(second).to be(first)
+    end
+
+    it "rescans when a manifest mtime changes" do
+      dir = make_container(local, "cached", manifest: manifest_v1, files: { "handler.rb" => "# handler" })
+
+      first = described_class.load_all(layers: layers)
+      expect(first.containers["cached"][:dir]).to eq(dir)
+
+      manifest = File.join(dir, "ext.yml")
+      File.write(manifest, manifest_v2)
+      File.utime(Time.now + 5, Time.now + 5, manifest)
+
+      second = described_class.load_all(layers: layers)
+
+      expect(second).not_to be(first)
+      expect(second.containers["cached"]).not_to be_nil
+    end
+
+    it "rescans when a new container is added" do
+      make_container(local, "cached", manifest: manifest_v1, files: { "handler.rb" => "# handler" })
+      first = described_class.load_all(layers: layers)
+      expect(first.containers.keys).to eq(["cached"])
+
+      make_container(local, "second", manifest: manifest_v1.sub("id: cached", "id: second"),
+                     files: { "handler.rb" => "# handler" })
+      second = described_class.load_all(layers: layers)
+      expect(second.containers.keys).to contain_exactly("cached", "second")
+    end
+
+    it "rescans on force: true even when nothing changed" do
+      make_container(local, "cached", manifest: manifest_v1, files: { "handler.rb" => "# handler" })
+      first = described_class.load_all(layers: layers)
+      forced = described_class.load_all(layers: layers, force: true)
+      expect(forced).not_to be(first)
+    end
+  end
+
+  describe "api id collision" do
+    it "errors when a top-level api unit reuses a panel-derived api id" do
+      manifest = <<~YAML
+        id: clash
+        origin: self
+        contributes:
+          panels:
+            - id: dashboard
+              view: panels/dashboard/view.js
+              api: panels/dashboard/handler.rb
+          api:
+            - id: dashboard
+              handler: api/dashboard.rb
+      YAML
+      make_container(local, "clash", manifest: manifest, files: {
+        "panels/dashboard/view.js"    => "// view",
+        "panels/dashboard/handler.rb" => "# panel handler",
+        "api/dashboard.rb"            => "# api handler",
+      })
+
+      result = described_class.load_all(layers: layers, force: true)
+
+      expect(result.api.size).to eq(1)
+      expect(result.api.first.spec["handler_abs"]).to end_with("panels/dashboard/handler.rb")
+
+      collision = result.errors.find { |e| e.message.include?("already contributed") }
+      expect(collision).not_to be_nil
+      expect(collision.unit).to eq("api/dashboard")
+    end
+  end
 end

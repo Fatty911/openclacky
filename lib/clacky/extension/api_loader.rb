@@ -25,6 +25,7 @@ module Clacky
       def load_all(dir: DEFAULT_DIR, builtin: true, reload: false)
         result = Result.new(loaded: [], skipped: [])
         Clacky::ApiExtension.reset_registry!
+        handler_mtime_cache.clear
 
         if builtin && Dir.exist?(BUILTIN_DIR)
           Dir.glob(File.join(BUILTIN_DIR, "*", "handler.rb")).sort.each do |handler_path|
@@ -53,29 +54,30 @@ module Clacky
         @last_result || load_all
       end
 
-      # Per-request hot path used by the dispatcher. Always re-loads the
-      # handler so edits during development show up immediately; constant
-      # redefinition warnings from re-running the file body are silenced
-      # inside `load_one`.
+      # Per-request hot path used by the dispatcher. Re-loads the handler
+      # only when its file mtime has changed since the last load — a stat is
+      # cheap, and skipping unchanged handlers keeps the request path clean.
       def ensure_fresh(mount_id)
-        ext_id, unit_id = split_mount_id(mount_id)
-        return unless ext_id && unit_id
+        mid = Clacky::Extension::MountId.parse(mount_id.to_s)
+        return unless mid
 
-        path, ext_dir = resolve_handler(ext_id, unit_id)
+        path, ext_dir = resolve_handler(mid.ext_id, mid.unit_id)
         return unless path
 
+        current_mtime = File.mtime(path).to_f
+        cache = handler_mtime_cache
+        return if cache[mid.to_s] == current_mtime
+
         r = Result.new(loaded: [], skipped: [])
-        load_one(ext_id, unit_id, ext_dir, path, r, reload: true)
+        load_one(mid.ext_id, mid.unit_id, ext_dir, path, r, reload: true)
         r.skipped.each { |(id, reason)| log_skip(id, reason) }
+        cache[mid.to_s] = current_mtime
       rescue StandardError => e
         Clacky::Logger.warn("[ApiExtensionLoader] ensure_fresh(#{mount_id}) failed: #{e.message}")
       end
 
-      private def split_mount_id(mount_id)
-        return [nil, nil] unless mount_id.is_a?(String)
-        ext_id, unit_id = mount_id.split("/", 2)
-        return [nil, nil] if ext_id.nil? || ext_id.empty? || unit_id.nil? || unit_id.empty?
-        [ext_id, unit_id]
+      private def handler_mtime_cache
+        @handler_mtime_cache ||= {}
       end
 
       private def resolve_handler(ext_id, unit_id)
@@ -96,7 +98,7 @@ module Clacky
       end
 
       def load_one(ext_id, unit_id, ext_dir, handler_path, result, reload: false)
-        mount_id = "#{ext_id}/#{unit_id}"
+        mount_id = Clacky::Extension::MountId.new(ext_id, unit_id).to_s
         meta = read_meta(ext_dir)
         before = Clacky::ApiExtension.pending_subclasses.size
 
@@ -144,12 +146,13 @@ module Clacky
 
         Clacky::ApiExtension.register(mount_id, klass)
         result.loaded << mount_id
+        handler_mtime_cache[mount_id] = File.mtime(handler_path).to_f rescue nil
         public_count = klass.public_paths.size
         suffix = public_count > 0 ? " (#{public_count} public)" : ""
         Clacky::Logger.info("[ApiExtensionLoader] Loaded '#{mount_id}' — #{klass.routes.size} route(s)#{suffix}")
       rescue StandardError, ScriptError => e
-        result.skipped << ["#{ext_id}/#{unit_id}", e.message]
-        log_skip("#{ext_id}/#{unit_id}", e.message)
+        result.skipped << [Clacky::Extension::MountId.new(ext_id, unit_id).to_s, e.message]
+        log_skip(Clacky::Extension::MountId.new(ext_id, unit_id).to_s, e.message)
       end
 
       private def read_meta(ext_dir)

@@ -58,7 +58,7 @@ module Clacky
         # Local-app convenience: see ApiExtensionLoader.ensure_fresh — that is
         # the single source of truth for per-request hot reload.
 
-        # /api/ext/<ext_id>/<unit_id>/<rest> → ["<ext_id>/<unit_id>", "/<rest>"]
+        # /api/ext/<ext_id>/<unit_id>/<rest> → [MountId string, "/<rest>"]
         private def parse_path(path)
           return [nil, nil] unless path.to_s.start_with?(MOUNT_PREFIX)
 
@@ -76,9 +76,10 @@ module Clacky
             unit_id = rest
             sub = "/"
           end
-          return [nil, nil] if ext_id.empty? || unit_id.empty?
+          mid = Clacky::Extension::MountId.new(ext_id, unit_id)
+          return [nil, nil] if mid.ext_id.empty? || mid.unit_id.empty?
 
-          ["#{ext_id}/#{unit_id}", sub]
+          [mid.to_s, sub]
         end
 
         private def find_route(klass, method, sub_path)

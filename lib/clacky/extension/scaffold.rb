@@ -240,16 +240,15 @@ module Clacky
                 skills: [#{slug}-skill]
             channels:
               - id: noop
-                platform: #{slug}_noop
                 adapter: channels/noop.rb
             patches:
-              # Patches are a power tool: they monkey-patch real classes.
-              # The example target is harmless — it just adds an audit log line.
-              # Drop `fingerprint:` to trust the patch unconditionally, or run
-              # `clacky patch_verify` to compute one and freeze it.
-              - target: "Clacky::Tools::Shell#run"
+              # Patches monkey-patch real classes. The example target is a
+              # real, live method — Terminal#execute is called for every
+              # shell tool invocation. Omit `fingerprint:` to trust the patch
+              # (loader will require the file directly); provide one to have
+              # the loader disable/warn if upstream source drifts.
+              - target: "Clacky::Tools::Terminal#execute"
                 file: patches/audit.rb
-                on_mismatch: warn
             hooks:
               - event: before_tool_use
                 file: hooks/audit.rb
@@ -258,21 +257,115 @@ module Clacky
 
       private def full_panel_view(slug)
         <<~JS
-          // Dashboard panel for the "#{slug}" extension.
-          // Mounts a tab in the session aside; talks to its backend at
-          // /api/ext/#{slug}/dashboard/. Reload the WebUI page to see edits.
+          // Dashboard panel + demo UI hooks for the "#{slug}" extension.
+          // One file, six slots + one workspace — a tour of every UI hook:
+          //   • sidebar.nav.top    — top-of-rail entry for a first-class workspace
+          //   • sidebar.nav        — regular menu entry (between Sessions and Config)
+          //   • sidebar.nav.bottom — end-of-rail entry for a secondary link
+          //   • main.workspace     — a full-page view opened by those entries
+          //   • session.banner     — a strip above the message list
+          //   • session.aside      — a tab in the right aside
+          //   • session.composer   — quick-action buttons above the input bar
+          // Reload the WebUI page to see edits.
           (function () {
+            var EXT = "#{slug}";
+
+            // ── 0. Full-page workspace: a "console" view mounted in #main.
+            //   Registered once; opened via openWorkspace(id) below or by
+            //   navigating to #ext/#{slug}. Router hides other panels first,
+            //   then calls render(container) — container is empty on entry.
+            Clacky.ext.ui.registerWorkspace(EXT, {
+              title: EXT + " console",
+              render: function (container) {
+                container.innerHTML =
+                  '<div style="max-width:720px;margin:32px auto;padding:24px;">' +
+                    '<h2 style="margin:0 0 8px">' + EXT + ' console</h2>' +
+                    '<p style="opacity:.7;margin:0 0 16px">' +
+                      'Full-page workspace registered by the ' + EXT + ' extension. ' +
+                      'Replace this render() with a real dashboard, form, or embedded iframe.' +
+                    '</p>' +
+                    '<button id="ws-load-stats">Load stats</button>' +
+                    '<pre id="ws-out" style="margin-top:12px"></pre>' +
+                  '</div>';
+                container.querySelector("#ws-load-stats").addEventListener("click", async function () {
+                  var res = await fetch("/api/ext/" + EXT + "/stats/");
+                  container.querySelector("#ws-out").textContent =
+                    JSON.stringify(await res.json(), null, 2);
+                });
+              },
+            });
+
+            // Shared factory for a sidebar row (icon + label + click handler).
+            function navRow(label, onClick) {
+              var item = document.createElement("div");
+              item.className = "task-item task-item-summary";
+              item.innerHTML =
+                '<div class="task-row">' +
+                  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+                       'fill="none" stroke="currentColor" stroke-width="2" ' +
+                       'stroke-linecap="round" stroke-linejoin="round" class="task-icon">' +
+                    '<rect x="3" y="3" width="7" height="7"/>' +
+                    '<rect x="14" y="3" width="7" height="7"/>' +
+                    '<rect x="3" y="14" width="7" height="7"/>' +
+                    '<rect x="14" y="14" width="7" height="7"/>' +
+                  '</svg>' +
+                  '<div class="task-info"><span class="task-name">' + label + '</span></div>' +
+                '</div>';
+              item.addEventListener("click", onClick);
+              return item;
+            }
+
+            // ── 1a. Top slot: first-class workspace entry, above Sessions ──
+            //   Global chrome — visible for every agent regardless of the
+            //   panel file this mount lives in.
+            Clacky.ext.ui.mount("sidebar.nav.top", function () {
+              return navRow(EXT + " console", function () {
+                Clacky.ext.ui.openWorkspace(EXT);
+              });
+            });
+
+            // ── 1b. Main slot: regular menu row between Sessions and Config ─
+            Clacky.ext.ui.mount("sidebar.nav", function () {
+              return navRow(EXT + " menu (middle)", function () {
+                Clacky.ext.ui.openWorkspace(EXT);
+              });
+            });
+
+            // ── 1c. Bottom slot: secondary link at the end of the rail ─────
+            Clacky.ext.ui.mount("sidebar.nav.bottom", function () {
+              return navRow(EXT + " footer link", function () {
+                Clacky.ext.ui.openWorkspace(EXT);
+              });
+            });
+
+            // ── 2. Session banner: horizontal strip above the messages ─────
+            Clacky.ext.ui.mount("session.banner", function () {
+              var bar = document.createElement("div");
+              bar.style.cssText =
+                "padding:8px 12px;margin:8px 0;border-radius:6px;" +
+                "background:var(--accent-soft,#eef);color:var(--accent,#334);" +
+                "display:flex;align-items:center;gap:8px;font-size:13px;";
+              bar.innerHTML = '<strong>' + EXT + '</strong> — banner slot demo. ';
+              var dismiss = document.createElement("button");
+              dismiss.textContent = "Dismiss";
+              dismiss.style.cssText = "margin-left:auto;font-size:12px;";
+              dismiss.addEventListener("click", function () { bar.remove(); });
+              bar.appendChild(dismiss);
+              return bar;
+            });
+
+            // ── 3. Session aside: a tab in the right column (tabbed slot) ──
             Clacky.ext.ui.mount("session.aside", function (ctx) {
               var el = document.createElement("div");
               el.style.padding = "16px";
-              el.innerHTML = '<h3 style="margin:0 0 8px">#{slug} dashboard</h3>';
+              el.innerHTML = '<h3 style="margin:0 0 8px">' + EXT + ' dashboard</h3>';
 
               var btn = document.createElement("button");
               btn.textContent = "Load stats";
               var out = document.createElement("pre");
 
               btn.addEventListener("click", async function () {
-                var res = await fetch("/api/ext/#{slug}/stats/");
+                var res = await fetch("/api/ext/" + EXT + "/stats/");
                 out.textContent = JSON.stringify(await res.json(), null, 2);
               });
 
@@ -280,8 +373,38 @@ module Clacky
               el.appendChild(out);
               return el;
             }, {
-              tab: { id: "#{slug}", label: () => "#{slug}" },
+              tab: { id: EXT, label: () => EXT },
               order: 500,
+            });
+
+            // ── 4. Session composer: quick-action buttons above the input ──
+            //   Clicking a button injects a slash command into #user-input
+            //   and clicks #btn-send — the same code path as typing it.
+            Clacky.ext.ui.mount("session.composer", function () {
+              var wrap = document.createElement("div");
+              wrap.style.cssText = "display:flex;gap:6px;padding:6px 8px;flex-wrap:wrap;";
+
+              function quick(label, command) {
+                var b = document.createElement("button");
+                b.type = "button";
+                b.textContent = label;
+                b.style.cssText =
+                  "padding:4px 10px;font-size:12px;border-radius:14px;" +
+                  "border:1px solid var(--border,#ccc);background:var(--surface,#fff);cursor:pointer;";
+                b.addEventListener("click", function () {
+                  var input = document.getElementById("user-input");
+                  var send  = document.getElementById("btn-send");
+                  if (!input || !send) return;
+                  input.value = command;
+                  input.dispatchEvent(new Event("input", { bubbles: true }));
+                  send.click();
+                });
+                return b;
+              }
+
+              wrap.appendChild(quick("Say hi", "/" + EXT + "-skill hi"));
+              wrap.appendChild(quick("Explain code", "/" + EXT + "-skill explain the current file"));
+              return wrap;
             });
           })();
         JS
@@ -344,9 +467,10 @@ module Clacky
         <<~RUBY
           # frozen_string_literal: true
 
-          # Demo channel adapter for ":#{slug}_noop". Does nothing useful; it
-          # exists to show the wiring. Real adapters connect to Slack, Feishu,
-          # etc. and translate inbound/outbound messages.
+          # Demo channel adapter for `:#{slug}_noop`. It doesn't actually
+          # connect anywhere — it exists to show the wiring. Real adapters
+          # (see the built-in Feishu / WeCom / Telegram / Discord ones) open
+          # a long-poll or webhook and translate messages both ways.
           module Clacky
             module Channel
               module Adapters
@@ -364,20 +488,20 @@ module Clacky
                   end
 
                   def start(&_on_message)
-                    # TODO: connect to your platform and loop, calling on_message
+                    # TODO: connect to your platform and yield events.
                   end
 
                   def stop
-                    # TODO: tear down connections
+                    # TODO: tear down connections.
                   end
 
                   def send_text(_chat_id, text, reply_to: nil)
                     Clacky::Logger.info("[#{slug}_noop] would send: \#{text}")
                     { message_id: "noop-\#{Time.now.to_i}" }
                   end
-
-                  Adapters.register(platform_id, self)
                 end
+
+                register(#{const}.platform_id, #{const})
               end
             end
           end
@@ -388,19 +512,19 @@ module Clacky
         <<~RUBY
           # frozen_string_literal: true
 
-          # Example monkey-patch. Targets Clacky::Tools::Shell#run and just logs
-          # every shell invocation. In real life you might enforce a denylist,
-          # rewrite arguments, or measure timing.
+          # Example monkey-patch. Prepends onto Clacky::Tools::Terminal#execute
+          # so we get one log line per shell tool invocation.
+          # In production a patch might enforce a denylist, rewrite arguments,
+          # or measure timing. Keep the body small and always call `super`.
           module ExtSampleAuditPatch
-            def run(*args, **kwargs)
-              Clacky::Logger.info("[ext-audit] shell.run", args: args.first(2))
+            def execute(*args, **kwargs)
+              cmd = kwargs[:command] || args.first
+              Clacky::Logger.info("[ext-audit] terminal.execute", command: cmd.to_s[0, 200])
               super
             end
           end
 
-          if defined?(Clacky::Tools::Shell)
-            Clacky::Tools::Shell.prepend(ExtSampleAuditPatch)
-          end
+          Clacky::Tools::Terminal.prepend(ExtSampleAuditPatch)
         RUBY
       end
 
@@ -428,12 +552,19 @@ module Clacky
 
           ## Contents
 
-          - `panels/dashboard/` — WebUI panel + per-panel backend
+          - `panels/dashboard/` — WebUI panel + per-panel backend. Its
+            `view.js` also demonstrates every UI hook at once:
+            a full-page workspace opened from three sidebar slots
+            (`sidebar.nav.top` above Sessions, `sidebar.nav` between
+            Sessions and Config, `sidebar.nav.bottom` at the end of the
+            rail — hash `#ext/#{slug}`), plus `session.banner`,
+            `session.aside`, and `session.composer` (quick-action
+            buttons that submit slash commands).
           - `api/stats.rb`      — standalone HTTP endpoint at `/api/ext/#{slug}/stats`
           - `skills/#{slug}-skill/SKILL.md` — a skill contributed to the agent
           - `agents/designer.md` — a custom agent (`--agent designer`) that owns the panel + skill
           - `channels/noop.rb`  — a no-op IM channel adapter (`:#{slug}_noop`)
-          - `patches/audit.rb`  — a monkey-patch on `Clacky::Tools::Shell#run`
+          - `patches/audit.rb`  — a monkey-patch on `Clacky::Tools::Terminal#execute`
           - `hooks/audit.rb`    — a `before_tool_use` hook callback
 
           ## Verify
@@ -445,10 +576,16 @@ module Clacky
 
           ## Try it
 
-          - Reload the WebUI page → switch to the `designer` agent → see the **#{slug}** tab in the aside
+          - Reload the WebUI page → three sidebar entries appear:
+            **#{slug} console** at the top, **#{slug} menu (middle)** between
+            Sessions and Config, **#{slug} footer link** at the very bottom
+            (all global; every agent sees them)
+          - Click any of them → main area switches to the full-page workspace at `#ext/#{slug}` (Load stats works)
+          - Switch to the `designer` agent → see the **#{slug}** tab in the aside, plus a banner and quick-action buttons above the input
+          - Click a quick-action button → it fills `#user-input` with `/#{slug}-skill …` and submits
           - `clacky --agent designer "say hi"` — uses the contributed skill
           - Run any tool from chat → see `[ext-hook] before_tool_use` in the log
-          - Run a shell tool → see `[ext-audit] shell.run` from the patch
+          - Run a shell tool → see `[ext-audit] terminal.execute` from the patch
 
           ## Trim it down
 

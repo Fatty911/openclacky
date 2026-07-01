@@ -125,6 +125,10 @@
   <aside id="sidebar">
     <!-- Sidebar navigation groups -->
     <div id="sidebar-list">
+      <!-- TOP nav slot: extensions add first-class workspace entries here.
+           Above Sessions — reserved for major extension surfaces. -->
+      <div id="ext-slot-sidebar-nav-top" data-slot="sidebar.nav.top"></div>
+
       <!-- Chat Group -->
       <div id="chat-section">
         <!-- Header: "Sessions" label + [+ ▾] split button -->
@@ -162,7 +166,11 @@
         <div id="session-list"></div>
         <!-- Load more button rendered dynamically by Sessions.renderList() -->
       </div>
-      
+
+      <!-- MAIN nav slot: default landing spot for extension menus. Between
+           Sessions and Config so ext entries feel like standard nav items. -->
+      <div id="ext-slot-sidebar-nav" data-slot="sidebar.nav"></div>
+
       <!-- Config Group -->
       <div id="config-section">
         <div class="sidebar-divider"><span data-i18n="sidebar.config">Config</span></div>
@@ -280,8 +288,8 @@
         </div>
       </div>
 
-      <!-- Extension nav slot: extensions add custom menu items / entry points to whole new workspaces here. -->
-      <div id="ext-slot-sidebar-nav" data-slot="sidebar.nav"></div>
+      <!-- BOTTOM nav slot: end-of-sidebar spot for secondary ext entries. -->
+      <div id="ext-slot-sidebar-nav-bottom" data-slot="sidebar.nav.bottom"></div>
     </div>
 
     <!-- Bottom Settings -->
@@ -311,8 +319,10 @@
   <!-- ── MAIN ─────────────────────────────────────────────────────────── -->
   <main id="main">
 
-    <!-- Extension workspace slot: extensions mount entirely new custom panels here. -->
-    <div id="ext-slot-main-workspace" data-slot="main.workspace"></div>
+    <!-- Extension workspace slot: extensions mount entirely new custom panels here.
+         Hidden by default; the Router shows it (display:block) when handling
+         the `ext-workspace` view and re-renders it on every navigate(). -->
+    <div id="ext-slot-main-workspace" data-slot="main.workspace" style="display:none"></div>
 
 
     <!-- Onboard panel: kept as empty shell (soul_setup auto-launches /onboard session) -->

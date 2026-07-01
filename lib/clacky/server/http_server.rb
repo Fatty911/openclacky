@@ -398,6 +398,12 @@ module Clacky
         # above so they share the registry instead of being reset away.
         load_container_api_extensions
 
+        # Static verification of every ext.yml container: unknown keys, bad
+        # scopes, dangling agent→panel references, layer-shadow warnings.
+        # Errors from the loader itself are already surfaced elsewhere; this
+        # pass covers the whole-program checks an author needs to see at boot.
+        report_extension_issues
+
         # Start the background scheduler
         @scheduler.start
         puts "   Scheduler: #{@scheduler.schedules.size} task(s) loaded"
@@ -1305,6 +1311,32 @@ module Clacky
         end
       rescue StandardError => e
         Clacky::Logger.error("[ExtensionLoader] container api load failed: #{e.message}")
+      end
+
+      # Whole-program static checks over ext.yml — unknown keys, bad scopes,
+      # dangling agent→panel refs, layer-shadow overrides. Uses the already-
+      # loaded ExtensionLoader result so this is essentially free at boot.
+      private def report_extension_issues
+        result = Clacky::ExtensionLoader.load_all
+        issues = Clacky::ExtensionVerifier.verify(result)
+        return if issues.empty?
+
+        errors = issues.count { |i| i.level == :error }
+        warns  = issues.size - errors
+        Clacky::Logger.info("[ExtensionVerifier] #{errors} error(s), #{warns} warning(s)")
+
+        issues.each do |issue|
+          location = issue.file ? " [#{issue.file}]" : ""
+          unit     = issue.unit ? " #{issue.unit}" : ""
+          message  = "[ExtensionVerifier] #{issue.ext}#{unit} (#{issue.code}) — #{issue.message}#{location}"
+          if issue.level == :error
+            Clacky::Logger.error(message)
+          else
+            Clacky::Logger.warn(message)
+          end
+        end
+      rescue StandardError => e
+        Clacky::Logger.warn("[ExtensionVerifier] verify failed: #{e.message}")
       end
 
       # Serve a file from a resolved extension container: /ext_ui/<ext_id>/<rel>.

@@ -607,6 +607,21 @@ body {
 }
 #session-list { padding: 4px 0 0; min-height: 6.75rem; }
 
+/* ── Extension nav slots (top / mid / bottom) ───────────────────────────── */
+[id^="ext-slot-sidebar-nav"] { display: block; }
+[id^="ext-slot-sidebar-nav"]:empty { display: none; }
+#ext-slot-sidebar-nav-top {
+  padding: 8px 0 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--color-border-secondary);
+}
+#ext-slot-sidebar-nav      { padding: 6px 0 4px; }
+#ext-slot-sidebar-nav-bottom {
+  padding: 8px 0 10px;
+  margin-top: 6px;
+  border-top: 1px solid var(--color-border-secondary);
+}
+
 /* ── Sidebar divider (Section Labels) ───────────────────────────────────── */
 .sidebar-divider {
   display: flex;

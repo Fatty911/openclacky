@@ -107,7 +107,7 @@ module Clacky
 
       def mount_id
         return nil unless @ext_id && @unit_id
-        "#{@ext_id}/#{@unit_id}"
+        Clacky::Extension::MountId.new(@ext_id, @unit_id).to_s
       end
 
       def ext_dir
