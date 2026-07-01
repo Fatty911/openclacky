@@ -1,0 +1,31 @@
+// Hello panel for the "<%= slug %>" extension.
+// Mounts a tab in the session aside; talks to its backend at
+// /api/ext/<%= slug %>/hello/. Reload the WebUI page to see edits.
+//
+// Styling: use host classes (btn-primary, btn-secondary, form-input,
+// form-textarea, form-label) so extensions inherit theme + hover
+// states automatically. See docs/extensions/ui-styling.md.
+(function () {
+  Clacky.ext.ui.mount("session.aside", function (ctx) {
+    var el = document.createElement("div");
+    el.style.padding = "16px";
+
+    var btn = document.createElement("button");
+    btn.className = "btn-primary";
+    btn.textContent = "Ping backend";
+    var out = document.createElement("pre");
+    out.style.cssText = "margin-top:12px;white-space:pre-wrap;";
+
+    btn.addEventListener("click", async function () {
+      var res = await fetch("/api/ext/<%= slug %>/hello/");
+      out.textContent = JSON.stringify(await res.json(), null, 2);
+    });
+
+    el.appendChild(btn);
+    el.appendChild(out);
+    return el;
+  }, {
+    tab: { id: "<%= slug %>", label: () => "<%= slug %>" },
+    order: 500,
+  });
+})();

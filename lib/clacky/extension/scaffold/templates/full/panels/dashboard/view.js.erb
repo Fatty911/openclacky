@@ -1,0 +1,170 @@
+// Dashboard panel + demo UI hooks for the "<%= slug %>" extension.
+// One file, six slots + one workspace — a tour of every UI hook:
+//   • sidebar.nav.top    — top-of-rail entry for a first-class workspace
+//   • sidebar.nav        — regular menu entry (between Sessions and Config)
+//   • sidebar.nav.bottom — end-of-rail entry for a secondary link
+//   • main.workspace     — a full-page view opened by those entries
+//   • session.banner     — a strip above the message list
+//   • session.aside      — a tab in the right aside
+//   • session.composer   — quick-action buttons above the input bar
+// Reload the WebUI page to see edits.
+(function () {
+  var EXT = "<%= slug %>";
+
+  // ── 0. Full-page workspace: a "console" view mounted in #main.
+  //   Registered once; opened via openWorkspace(id) below or by
+  //   navigating to #ext/<%= slug %>. Router hides other panels first,
+  //   then calls render(container) — container is empty on entry.
+  Clacky.ext.ui.registerWorkspace(EXT, {
+    title: EXT + " console",
+    render: function (container) {
+      container.innerHTML =
+        '<div style="max-width:720px;margin:32px auto;padding:24px;">' +
+          '<h2 style="margin:0 0 8px">' + EXT + ' console</h2>' +
+          '<p style="opacity:.7;margin:0 0 16px">' +
+            'Full-page workspace registered by the ' + EXT + ' extension. ' +
+            'Replace this render() with a real dashboard, form, or embedded iframe.' +
+          '</p>' +
+          '<button id="ws-load-stats" class="btn-primary">Load stats</button>' +
+          '<pre id="ws-out" style="margin-top:12px;white-space:pre-wrap;"></pre>' +
+        '</div>';
+      container.querySelector("#ws-load-stats").addEventListener("click", async function () {
+        var res = await fetch("/api/ext/" + EXT + "/stats/");
+        container.querySelector("#ws-out").textContent =
+          JSON.stringify(await res.json(), null, 2);
+      });
+    },
+  });
+
+  // Shared factory for a sidebar row (icon + label + click handler).
+  function navRow(label, onClick) {
+    var item = document.createElement("div");
+    item.className = "task-item task-item-summary";
+    item.innerHTML =
+      '<div class="task-row">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" ' +
+             'fill="none" stroke="currentColor" stroke-width="2" ' +
+             'stroke-linecap="round" stroke-linejoin="round" class="task-icon">' +
+          '<rect x="3" y="3" width="7" height="7"/>' +
+          '<rect x="14" y="3" width="7" height="7"/>' +
+          '<rect x="3" y="14" width="7" height="7"/>' +
+          '<rect x="14" y="14" width="7" height="7"/>' +
+        '</svg>' +
+        '<div class="task-info"><span class="task-name">' + label + '</span></div>' +
+      '</div>';
+    item.addEventListener("click", onClick);
+    return item;
+  }
+
+  // ── 1a. Top slot: first-class workspace entry, above Sessions ──
+  //   Global chrome — visible for every agent regardless of the
+  //   panel file this mount lives in.
+  Clacky.ext.ui.mount("sidebar.nav.top", function () {
+    return navRow(EXT + " console", function () {
+      Clacky.ext.ui.openWorkspace(EXT);
+    });
+  });
+
+  // ── 1b. Main slot: regular menu row between Sessions and Config ─
+  Clacky.ext.ui.mount("sidebar.nav", function () {
+    return navRow(EXT + " menu (middle)", function () {
+      Clacky.ext.ui.openWorkspace(EXT);
+    });
+  });
+
+  // ── 1c. Bottom slot: secondary link at the end of the rail ─────
+  Clacky.ext.ui.mount("sidebar.nav.bottom", function () {
+    return navRow(EXT + " footer link", function () {
+      Clacky.ext.ui.openWorkspace(EXT);
+    });
+  });
+
+  // ── 2. Session banner: horizontal strip above the messages ─────
+  Clacky.ext.ui.mount("session.banner", function () {
+    var bar = document.createElement("div");
+    bar.style.cssText =
+      "padding:8px 12px;margin:8px 0;border-radius:var(--radius-sm,6px);" +
+      "background:var(--color-bg-hover,#f4f4f2);color:var(--color-text-primary,#334);" +
+      "display:flex;align-items:center;gap:8px;font-size:13px;";
+    bar.innerHTML = '<strong>' + EXT + '</strong> — banner slot demo. ';
+    var dismiss = document.createElement("button");
+    dismiss.className = "btn-secondary";
+    dismiss.textContent = "Dismiss";
+    dismiss.style.cssText = "margin-left:auto;padding:4px 12px;font-size:12px;";
+    dismiss.addEventListener("click", function () { bar.remove(); });
+    bar.appendChild(dismiss);
+    return bar;
+  });
+
+  // ── 3. Session aside: a tab in the right column (tabbed slot) ──
+  Clacky.ext.ui.mount("session.aside", function (ctx) {
+    var el = document.createElement("div");
+    el.style.padding = "16px";
+    el.innerHTML = '<h3 style="margin:0 0 8px">' + EXT + ' dashboard</h3>';
+
+    var btn = document.createElement("button");
+    btn.className = "btn-primary";
+    btn.textContent = "Load stats";
+    var out = document.createElement("pre");
+    out.style.cssText = "margin-top:12px;white-space:pre-wrap;";
+
+    btn.addEventListener("click", async function () {
+      var res = await fetch("/api/ext/" + EXT + "/stats/");
+      out.textContent = JSON.stringify(await res.json(), null, 2);
+    });
+
+    el.appendChild(btn);
+    el.appendChild(out);
+    return el;
+  }, {
+    tab: { id: EXT, label: () => EXT },
+    order: 500,
+  });
+
+  // ── 4. Session composer: quick-action buttons above the input ──
+  //   Clicking a button injects a slash command into #user-input
+  //   and clicks #btn-send — the same code path as typing it.
+  //
+  //   These "chips" are pill-shaped so they read differently from
+  //   full btn-primary/btn-secondary buttons. Colors/radii still
+  //   pull from host CSS variables so themes travel with them.
+  Clacky.ext.ui.mount("session.composer", function () {
+    var wrap = document.createElement("div");
+    wrap.style.cssText = "display:flex;gap:6px;padding:6px 8px;flex-wrap:wrap;";
+
+    function quick(label, command) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.style.cssText =
+        "padding:4px 12px;font-size:12px;border-radius:14px;cursor:pointer;" +
+        "border:1px solid var(--color-border-primary,#e8e8e4);" +
+        "background:var(--color-bg-primary,#fff);" +
+        "color:var(--color-text-secondary,#56585e);" +
+        "transition:background var(--transition-fast,120ms), border-color var(--transition-fast,120ms), color var(--transition-fast,120ms);";
+      b.addEventListener("mouseenter", function () {
+        b.style.background   = "var(--color-bg-hover,#f4f4f2)";
+        b.style.borderColor  = "var(--color-border-strong,#d4d4d0)";
+        b.style.color        = "var(--color-text-primary,#1a1a1a)";
+      });
+      b.addEventListener("mouseleave", function () {
+        b.style.background   = "var(--color-bg-primary,#fff)";
+        b.style.borderColor  = "var(--color-border-primary,#e8e8e4)";
+        b.style.color        = "var(--color-text-secondary,#56585e)";
+      });
+      b.addEventListener("click", function () {
+        var input = document.getElementById("user-input");
+        var send  = document.getElementById("btn-send");
+        if (!input || !send) return;
+        input.value = command;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        send.click();
+      });
+      return b;
+    }
+
+    wrap.appendChild(quick("Say hi", "/" + EXT + "-skill hi"));
+    wrap.appendChild(quick("Explain code", "/" + EXT + "-skill explain the current file"));
+    return wrap;
+  });
+})();

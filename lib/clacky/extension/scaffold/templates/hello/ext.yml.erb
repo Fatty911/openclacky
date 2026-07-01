@@ -1,0 +1,10 @@
+id: <%= slug %>
+name: <%= slug %>
+description: (describe what this extension does)
+origin: self
+contributes:
+  panels:
+    - id: hello
+      view: panels/hello/view.js
+      api: panels/hello/handler.rb
+      scope: global          # global | agent:<name>

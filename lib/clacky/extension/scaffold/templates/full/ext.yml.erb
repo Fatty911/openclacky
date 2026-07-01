@@ -1,0 +1,38 @@
+id: <%= slug %>
+name: <%= slug %>
+description: Kitchen-sink reference container — exercises all 7 contributes types.
+version: "0.1.0"
+origin: self
+contributes:
+  panels:
+    - id: dashboard
+      title: Dashboard
+      view: panels/dashboard/view.js
+      api: panels/dashboard/handler.rb
+      scope: agent:designer        # only visible to the `designer` agent below
+  api:
+    - id: stats
+      handler: api/stats.rb        # mounted at /api/ext/<%= slug %>/stats
+  skills:
+    - id: <%= slug %>-skill            # SKILL.md under skills/<%= slug %>-skill/
+  agents:
+    - id: designer
+      title: Designer
+      description: A demo agent that owns the dashboard panel and the <%= slug %>-skill skill.
+      prompt: agents/designer.md
+      panels: [dashboard]
+      skills: [<%= slug %>-skill]
+  channels:
+    - id: noop
+      adapter: channels/noop.rb
+  patches:
+    # Patches monkey-patch real classes. The example target is a
+    # real, live method — Terminal#execute is called for every
+    # shell tool invocation. Omit `fingerprint:` to trust the patch
+    # (loader will require the file directly); provide one to have
+    # the loader disable/warn if upstream source drifts.
+    - target: "Clacky::Tools::Terminal#execute"
+      file: patches/audit.rb
+  hooks:
+    - event: before_tool_use
+      file: hooks/audit.rb
