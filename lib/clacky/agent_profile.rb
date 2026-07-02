@@ -45,9 +45,28 @@ module Clacky
     def self.all
       out = {}
 
-      add = lambda do |id, title, description, source|
+      add = lambda do |id, title, title_zh, description, description_zh, source, order|
         next if id.nil? || id.empty?
-        out[id] ||= { id: id, title: title, description: description, source: source }
+        out[id] ||= {
+          id: id,
+          title: title,
+          title_zh: title_zh,
+          description: description,
+          description_zh: description_zh,
+          source: source,
+          order: order,
+        }
+      end
+
+      ExtensionLoader.last_result&.agents&.each do |unit|
+        spec = unit.spec || {}
+        title = spec["title"].to_s
+        title = unit.id if title.empty?
+        add.call(
+          unit.id, title, spec["title_zh"].to_s,
+          spec["description"].to_s, spec["description_zh"].to_s,
+          "extension", spec["order"]
+        )
       end
 
       Dir.glob(File.join(USER_AGENTS_DIR, "*")).sort.each do |path|
@@ -56,14 +75,11 @@ module Clacky
         next if id.start_with?("_")
         next unless File.file?(File.join(path, "profile.yml"))
         meta = read_profile_yml(File.join(path, "profile.yml"))
-        add.call(id, meta["title"] || meta["name"] || id, meta["description"].to_s, "user")
-      end
-
-      ExtensionLoader.last_result&.agents&.each do |unit|
-        spec = unit.spec || {}
-        title = spec["title"].to_s
-        title = unit.id if title.empty?
-        add.call(unit.id, title, spec["description"].to_s, "extension")
+        add.call(
+          id, meta["title"] || meta["name"] || id, meta["title_zh"].to_s,
+          meta["description"].to_s, meta["description_zh"].to_s,
+          "user", meta["order"]
+        )
       end
 
       Dir.glob(File.join(DEFAULT_AGENTS_DIR, "*")).sort.each do |path|
@@ -72,10 +88,15 @@ module Clacky
         next if id.start_with?("_")
         next unless File.file?(File.join(path, "profile.yml"))
         meta = read_profile_yml(File.join(path, "profile.yml"))
-        add.call(id, meta["title"] || meta["name"] || id.capitalize, meta["description"].to_s, "default")
+        add.call(
+          id, meta["title"] || meta["name"] || id.capitalize, meta["title_zh"].to_s,
+          meta["description"].to_s, meta["description_zh"].to_s,
+          "default", meta["order"]
+        )
       end
 
-      out.values
+      source_rank = { "default" => 0, "user" => 1, "extension" => 2 }
+      out.values.sort_by { |a| [source_rank[a[:source]] || 9, a[:order] || 999, a[:id]] }
     end
 
     private_class_method def self.read_profile_yml(path)

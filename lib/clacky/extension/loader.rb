@@ -321,12 +321,15 @@ module Clacky
                  layer: container[:layer], origin: container[:origin],
                  dir: container[:dir],
                  spec: {
-                   "title"       => spec["title"].to_s,
-                   "prompt"      => spec["prompt"],
-                   "prompt_abs"  => prompt_abs,
-                   "description" => spec["description"].to_s,
-                   "panels"      => Array(spec["panels"]).map(&:to_s),
-                   "skills"      => Array(spec["skills"]).map(&:to_s),
+                   "title"          => spec["title"].to_s,
+                   "title_zh"       => spec["title_zh"].to_s,
+                   "prompt"         => spec["prompt"],
+                   "prompt_abs"     => prompt_abs,
+                   "description"    => spec["description"].to_s,
+                   "description_zh" => spec["description_zh"].to_s,
+                   "order"          => spec["order"],
+                   "panels"         => Array(spec["panels"]).map(&:to_s),
+                   "skills"         => Array(spec["skills"]).map(&:to_s),
                  })
       end
 

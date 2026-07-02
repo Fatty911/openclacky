@@ -1,5 +1,9 @@
 name: coding
+title: Coding
+title_zh: 编程
 description: AI coding assistant and technical co-founder
+description_zh: AI 编程助手，你的技术合伙人
+order: 2
 panels:
   - git
   - time_machine

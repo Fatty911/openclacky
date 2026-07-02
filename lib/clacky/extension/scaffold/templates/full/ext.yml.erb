@@ -15,7 +15,9 @@ contributes:
   agents:
     - id: designer
       title: Designer
+      title_zh: 设计师
       description: A demo agent that owns the dashboard panel and the <%= slug %>-skill skill.
+      description_zh: 这是一个演示 agent，绑定 dashboard 面板和 <%= slug %>-skill 技能。
       prompt: agents/designer.md
       panels: [dashboard]
       skills: [<%= slug %>-skill]
