@@ -9803,7 +9803,7 @@ body.setup-mode[data-theme="dark"] {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--color-border-primary);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.25rem;
 }
 .trash-tabs-left {
   display: flex;
@@ -9935,6 +9935,11 @@ body.setup-mode[data-theme="dark"] {
   width: 3.5rem;
   height: 1.625rem;
   border-radius: 5px;
+}
+.trash-session-hint {
+  margin: -0.25rem 0;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
 }
 .trash-summary {
   font-size: 0.6875rem;
