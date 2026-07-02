@@ -5387,7 +5387,7 @@ module Clacky
       end
 
       # PATCH /api/sessions/:id/reasoning_effort
-      # Body: { "reasoning_effort": "off" | "low" | "medium" | "high" }
+      # Body: { "reasoning_effort": "off" | "low" | "medium" | "high" | "xhigh" }
       def api_switch_session_reasoning_effort(session_id, req, res)
         body = parse_json_body(req)
         raw = body["reasoning_effort"]
