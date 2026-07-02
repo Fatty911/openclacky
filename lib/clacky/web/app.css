@@ -6287,7 +6287,7 @@ body {
   transition: transform 0.18s;
 }
 .skills-filter-toggle input:checked ~ .skills-filter-toggle-track {
-  background: var(--color-accent, #6c63ff);
+  background: var(--color-accent-primary);
 }
 .skills-filter-toggle input:checked ~ .skills-filter-toggle-track::after {
   transform: translateX(0.875rem);
