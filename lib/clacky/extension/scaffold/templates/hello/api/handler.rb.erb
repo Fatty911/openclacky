@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# Backend for the "hello" panel of "<%= slug %>". Mounted at
-# /api/ext/<%= slug %>/hello/. Routes here are relative to that mount.
+# API backend for "<%= slug %>". Mounted at /api/ext/<%= slug %>/.
+# Routes here are relative to that mount.
 class <%= const_prefix %>Ext < Clacky::ApiExtension
   get "/" do
     json(message: "hello from <%= slug %>")

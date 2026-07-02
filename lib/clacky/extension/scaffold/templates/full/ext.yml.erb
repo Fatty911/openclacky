@@ -4,17 +4,14 @@ description: Kitchen-sink reference container — exercises all 7 contributes ty
 version: "0.1.0"
 origin: self
 contributes:
+  api: api/handler.rb              # single mount at /api/ext/<%= slug %>/
   panels:
     - id: dashboard
       title: Dashboard
       view: panels/dashboard/view.js
-      api: panels/dashboard/handler.rb
       scope: agent:designer        # only visible to the `designer` agent below
-  api:
-    - id: stats
-      handler: api/stats.rb        # mounted at /api/ext/<%= slug %>/stats
   skills:
-    - id: <%= slug %>-skill            # SKILL.md under skills/<%= slug %>-skill/
+    - id: <%= slug %>-skill        # SKILL.md under skills/<%= slug %>-skill/
   agents:
     - id: designer
       title: Designer

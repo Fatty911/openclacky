@@ -40,15 +40,12 @@ RSpec.describe "ExtensionLoader end-to-end with a kitchen-sink container" do
       version: "0.0.1"
       origin: self
       contributes:
+        api: api/handler.rb
         panels:
           - id: dashboard
             title: Dashboard
             scope: agent:designer
             view: panels/dashboard.js
-            api: api/dashboard.rb
-        api:
-          - id: stats
-            handler: api/stats.rb
         skills:
           - id: sample-skill
         agents:
@@ -71,8 +68,7 @@ RSpec.describe "ExtensionLoader end-to-end with a kitchen-sink container" do
     YAML
 
     File.write(File.join(ext_dir, "panels/dashboard.js"), "// dashboard panel\n")
-    File.write(File.join(ext_dir, "api/dashboard.rb"), "# dashboard handler\n")
-    File.write(File.join(ext_dir, "api/stats.rb"), "# stats handler\n")
+    File.write(File.join(ext_dir, "api/handler.rb"), "# api handler\n")
     FileUtils.mkdir_p(File.join(ext_dir, "agents"))
     File.write(File.join(ext_dir, "agents/designer.md"), "You are the designer.\n")
     File.write(File.join(ext_dir, "skills/sample-skill/SKILL.md"), <<~MD)

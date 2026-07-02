@@ -6,15 +6,15 @@ the parts you actually need into a real extension.
 
 ## Contents
 
-- `panels/dashboard/` — WebUI panel + per-panel backend. Its
-  `view.js` also demonstrates every UI hook at once:
+- `panels/dashboard/view.js` — WebUI panel. Also demonstrates every UI hook at once:
   a full-page workspace opened from three sidebar slots
   (`sidebar.nav.top` above Sessions, `sidebar.nav` between
   Sessions and Config, `sidebar.nav.bottom` at the end of the
   rail — hash `#ext/<%= slug %>`), plus `session.banner`,
   `session.aside`, and `session.composer` (quick-action
   buttons that submit slash commands).
-- `api/stats.rb`      — standalone HTTP endpoint at `/api/ext/<%= slug %>/stats`
+- `api/handler.rb`    — HTTP backend mounted at `/api/ext/<%= slug %>/`
+                        (routes `/dashboard`, `/stats`)
 - `skills/<%= slug %>-skill/SKILL.md` — a skill contributed to the agent
 - `agents/designer.md` — a custom agent (`--agent designer`) that owns the panel + skill
 - `channels/noop.rb`  — a no-op IM channel adapter (`:<%= slug %>_noop`)

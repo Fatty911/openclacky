@@ -1,9 +1,0 @@
-# frozen_string_literal: true
-
-# Per-panel backend for the dashboard panel of "<%= slug %>".
-# Mounted at /api/ext/<%= slug %>/dashboard/. Routes are relative.
-class <%= const_prefix %>Dashboard < Clacky::ApiExtension
-  get "/" do
-    json(panel: "dashboard", at: Time.now.utc.iso8601)
-  end
-end

@@ -4,16 +4,16 @@ require "json"
 require "fileutils"
 
 module Clacky
-  # Base class for user-defined HTTP API extensions loaded from
-  # ~/.clacky/api_ext/<name>/handler.rb. Subclasses use a tiny route DSL
+  # Base class for HTTP API extensions declared in an ext.yml container as
+  # `contributes.api: <path/to/handler.rb>`. Subclasses use a tiny route DSL
   # (get/post/put/patch/delete) to expose endpoints under
-  #   /api/ext/<name>/<sub-path>
+  #   /api/ext/<ext_id>/<sub-path>
   #
   # The framework wires up access-key auth, timeouts, JSON error envelopes,
   # path-parameter parsing, and a curated handler context — extension authors
   # only fill in business logic.
   #
-  # Minimal example (~/.clacky/api_ext/my-dashboard/handler.rb):
+  # Minimal example (~/.clacky/ext/local/my-dashboard/api/handler.rb):
   #
   #   class MyDashboardExt < Clacky::ApiExtension
   #     get "/summary" do
@@ -41,14 +41,14 @@ module Clacky
     end
 
     class << self
-      # Keyed by mount_id ("<ext_id>/<unit_id>"). One container can register
-      # multiple units; each gets its own subclass and its own mount segment.
+      # Keyed by ext_id — every extension contributes at most one API unit
+      # (declared as `contributes.api: <path>` in ext.yml).
       def registry
         @registry ||= {}
       end
 
-      def register(mount_id, klass)
-        registry[mount_id] = klass
+      def register(ext_id, klass)
+        registry[ext_id] = klass
       end
 
       def reset_registry!
@@ -97,19 +97,6 @@ module Clacky
         @ext_id = value
       end
 
-      def unit_id
-        @unit_id
-      end
-
-      def unit_id=(value)
-        @unit_id = value
-      end
-
-      def mount_id
-        return nil unless @ext_id && @unit_id
-        Clacky::Extension::MountId.new(@ext_id, @unit_id).to_s
-      end
-
       def ext_dir
         @ext_dir
       end
@@ -136,7 +123,7 @@ module Clacky
       end
 
       # Mark a route as not requiring access-key auth. Caller must also
-      # declare `public: true` in meta.yml for the framework to honor this.
+      # declare `public: true` at ext.yml top level for the framework to honor this.
       def public_endpoint(pattern)
         public_paths << normalize_pattern(pattern)
       end
@@ -247,10 +234,6 @@ module Clacky
       self.class.ext_id
     end
 
-    def unit_id
-      self.class.unit_id
-    end
-
     def config
       self.class.meta["config"] || {}
     end
@@ -289,9 +272,11 @@ module Clacky
     end
 
     # Submit a prompt to an existing session for execution.
-    # The session must be idle; returns the session_id on success.
-    # Raises Halt (409) if the session is already running.
-    def submit_task(session_id, prompt, display_message: nil)
+    # Returns the session_id on success.
+    # Raises Halt (409) if the session is already running and `interrupt: false`.
+    # When `interrupt: true`, supersedes the current turn (raises AgentInterrupted
+    # on the running thread, waits up to 2s for it to exit) then runs the new task.
+    def submit_task(session_id, prompt, display_message: nil, interrupt: false)
       reg = registry
       error!("server not ready", status: 503) unless reg
 
@@ -301,7 +286,13 @@ module Clacky
       end
 
       session = reg.get(session_id)
-      error!("session is busy", status: 409) if session[:status] == :running
+      if session[:status] == :running
+        error!("session is busy", status: 409) unless interrupt
+        @http_server.send(:interrupt_session, session_id)
+        old_thread = nil
+        reg.with_session(session_id) { |s| old_thread = s[:thread] }
+        old_thread&.join(2)
+      end
 
       @http_server.send(:run_session_task, session_id, prompt, display_message: display_message)
       session_id
@@ -349,7 +340,7 @@ module Clacky
     end
 
     def logger
-      @logger ||= ScopedLogger.new(self.class.mount_id || self.class.ext_id)
+      @logger ||= ScopedLogger.new(self.class.ext_id)
     end
 
     # Lightweight wrapper that prefixes log lines with the extension id.

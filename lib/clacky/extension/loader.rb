@@ -16,40 +16,23 @@ module Clacky
   #     panels:
   #       - id: canvas
   #         view: panels/canvas/view.js
-  #         api:  panels/canvas/handler.rb   # optional backend for this panel
   #         scope: agent:designer            # global (default) | agent:<name>
-  #     api:
-  #       - id: metrics
-  #         handler: api/metrics/handler.rb
+  #     api: api/handler.rb                  # single backend for the whole ext
   #
   # Source layers (ascending priority — same id, higher layer wins):
   #   builtin    gem default_extensions/<id>/
   #   installed  ~/.clacky/ext/installed/<id>/
   #   local      ~/.clacky/ext/local/<id>/
   #
-  # `ext.yml` is intentionally distinct from the `meta.yml` files consumed by
-  # PatchLoader / ApiExtensionLoader — those are per-unit and have unrelated
-  # schemas. This loader never touches them.
-  #
   # This class only *discovers and resolves*; actual mounting is done by the
   # existing call sites:
-  #   - api units     → ApiExtensionLoader.load_one(...)  (server boot / reload)
+  #   - api unit      → ApiExtensionLoader.load_one(...)  (server boot / reload)
   #   - panel units   → http_server ext_script_block(...) (rendered per request)
   #   - skill units   → SkillLoader#load_extension_skills (reads last_result on load_all)
   #   - agent units   → AgentProfile + http_server agent_profile_data (lookup by id)
   #   - channel units → channel.rb extension_adapter_loader (require + register at boot)
   #   - patch units   → PatchLoader.load_extension_patches (require at boot)
   #   - hook units    → ShellHookLoader.load_extension_hooks (register at boot)
-  #
-  # Backward compatibility — brand_skills as a degenerate protected container:
-  # A `~/.clacky/brand_skills/<name>/` entry is conceptually a vendor container
-  # contributing a single protected `skill` unit. That `skill` contributes type
-  # is not part of this first step (which wires only `panels` and `api`), so this
-  # loader deliberately does NOT scan brand_skills yet. Their encrypt/license/
-  # heartbeat chain stays entirely in SkillLoader#load_brand_skills and
-  # BrandConfig, unchanged. When the `skill` contributes type lands, brand_skills
-  # will be claimed here as `origin: enterprise` + protected units for listing
-  # only — never taking over decryption or license gating.
   module ExtensionLoader
     BUILTIN_DIR   = File.expand_path("../default_extensions", __dir__)
     INSTALLED_DIR = File.expand_path("~/.clacky/ext/installed")
@@ -185,7 +168,9 @@ module Clacky
         end
 
         { ext_id: ext_id, layer: layer, dir: dir, origin: origin,
-          contributes: data["contributes"] || {} }
+          public: data["public"] == true,
+          contributes: data["contributes"] || {},
+          raw: data }
       rescue StandardError => e
         errors << Error.new(ext_id: ext_id, layer: layer.to_s,
                             message: "failed to parse ext.yml: #{e.message}", file: manifest)
@@ -196,41 +181,14 @@ module Clacky
         contributes = container[:contributes]
         return unless contributes.is_a?(Hash)
 
-        api_ids_seen = {}   # id => "panel"|"api" (which contribution declared it first)
-
         Array(contributes["panels"]).each do |spec|
           unit = build_panel_unit(container, spec, result.errors)
-          next unless unit
-
-          result.panels << unit
-          # A panel may declare its own backend; load it as an api unit keyed
-          # by the panel id so the panel's fetch() calls resolve at runtime.
-          if spec["api"]
-            api_unit = build_api_unit(container, { "id" => spec["id"], "handler" => spec["api"] }, result.errors)
-            if api_unit
-              result.api << api_unit
-              api_ids_seen[api_unit.id] = "panel"
-            end
-          end
+          result.panels << unit if unit
         end
 
-        Array(contributes["api"]).each do |spec|
-          unit = build_api_unit(container, spec, result.errors)
-          next unless unit
-
-          if api_ids_seen[unit.id]
-            result.errors << Error.new(
-              ext_id: container[:ext_id], layer: container[:layer].to_s,
-              unit: "api/#{unit.id}",
-              message: "api id #{unit.id.inspect} already contributed by a panel with the same id — " \
-                       "rename one or drop the panel's `api:` field",
-              file: File.join(container[:dir], "ext.yml")
-            )
-            next
-          end
-
-          result.api << unit
-          api_ids_seen[unit.id] = "api"
+        if (api_spec = contributes["api"])
+          unit = build_api_unit(container, api_spec, result.errors)
+          result.api << unit if unit
         end
 
         Array(contributes["skills"]).each do |spec|
@@ -284,28 +242,30 @@ module Clacky
         Unit.new(kind: :panel, id: spec["id"].to_s, ext_id: ext_id,
                  layer: container[:layer], origin: container[:origin],
                  dir: container[:dir],
-                 spec: { "view" => spec["view"], "api" => spec["api"], "scope" => scope })
+                 spec: { "view" => spec["view"], "scope" => scope })
       end
 
       private def build_api_unit(container, spec, errors)
         ext_id = container[:ext_id]
-        unless spec.is_a?(Hash) && spec["id"] && spec["handler"]
+        handler_rel = spec.is_a?(String) ? spec : nil
+        unless handler_rel && !handler_rel.empty?
           errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "api",
-                              message: "api needs both `id` and `handler`")
+                              message: "api must be a string path to the handler file (e.g. `api: api/handler.rb`)",
+                              file: File.join(container[:dir], "ext.yml"))
           return nil
         end
 
-        handler_abs = File.join(container[:dir], spec["handler"])
+        handler_abs = File.join(container[:dir], handler_rel)
         unless File.file?(handler_abs)
-          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "api/#{spec['id']}",
-                              message: "handler file not found: #{spec['handler']}", file: handler_abs)
+          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "api",
+                              message: "handler file not found: #{handler_rel}", file: handler_abs)
           return nil
         end
 
-        Unit.new(kind: :api, id: spec["id"].to_s, ext_id: ext_id,
+        Unit.new(kind: :api, id: ext_id, ext_id: ext_id,
                  layer: container[:layer], origin: container[:origin],
                  dir: container[:dir],
-                 spec: { "handler" => spec["handler"], "handler_abs" => handler_abs })
+                 spec: { "handler" => handler_rel, "handler_abs" => handler_abs })
       end
 
       private def build_skill_unit(container, spec, errors)

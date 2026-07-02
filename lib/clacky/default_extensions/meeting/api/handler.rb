@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "set"
 require "fileutils"
 require "base64"
 require "tmpdir"
@@ -12,7 +13,10 @@ class MeetingExt < Clacky::ApiExtension
 
   MEETINGS_ROOT = File.expand_path("~/.clacky/meetings")
   VOCABULARY_PATH = File.join(MEETINGS_ROOT, "vocabulary.txt")
-  DEFAULT_VOCABULARY = "Clacky, OpenClacky, openclacky"
+  # Always injected into STT vocabulary — these are our own wake words / brand
+  # names and must not be droppable by the user's saved list.
+  SYSTEM_VOCABULARY = "Clacky, 小克".freeze
+  DEFAULT_VOCABULARY = "Clacky, 小克, OpenClacky, openclacky"
 
   # annotate is a read-only analysis: block every side-effecting tool so the
   # forked subagent can only read/think, never write files, run commands,
@@ -56,11 +60,14 @@ class MeetingExt < Clacky::ApiExtension
   end
 
   # POST /api/ext/meeting/end
-  # body: { session_id, meeting_id }
+  # body: { session_id, meeting_id, display_message? }
   # Finalizes the meeting and triggers summarization via the session agent.
   post "/end" do
     sid, mid = json_body.values_at("session_id", "meeting_id")
     error!("session_id and meeting_id required", status: 422) unless sid && mid
+
+    display_message = json_body["display_message"].to_s
+    display_message = "🛑 Meeting ended — generating meeting minutes…" if display_message.strip.empty?
 
     dir = meeting_dir(sid, mid)
     error!("meeting not found", status: 404) unless File.directory?(dir)
@@ -71,33 +78,19 @@ class MeetingExt < Clacky::ApiExtension
     File.write(meta_path, JSON.pretty_generate(meta))
 
     transcript_path = File.join(dir, "transcript.jsonl")
-    lines = File.readlines(transcript_path).map { |l| JSON.parse(l)["text"] }.reject(&:empty?)
+    lines = File.readlines(transcript_path).map { |l| JSON.parse(l)["text"] }.reject { |t| t.nil? || t.strip.empty? }
     transcript = lines.join("\n")
 
     logger.info("end: sid=#{sid} mid=#{mid} lines=#{lines.size} transcript_len=#{transcript.length}")
 
-    if transcript.strip.empty?
-      logger.warn("end: transcript is empty, skipping summarization")
-      json(ok: true, meeting_id: mid, skipped: true)
-      next
-    end
-
     prompt = <<~PROMPT
-      A meeting just ended. Invoke the "meeting-summarizer" skill to generate the meeting minutes from the transcript below.
+      A meeting just ended. Your ONLY next action is to call the tool `invoke_skill` with `name: "meeting-summarizer"` and pass the transcript below as the input. Do not use any other tool. Do not answer directly. Do not open a browser or run shell commands.
 
       Transcript:
       #{transcript}
     PROMPT
 
-    begin
-      submit_task(sid, prompt, display_message: "🛑 Meeting ended — generating meeting minutes…")
-      logger.info("end: submit_task succeeded sid=#{sid}")
-    rescue => e
-      logger.error("end: submit_task failed sid=#{sid} error=#{e.message}")
-      json(ok: false, meeting_id: mid, error: e.message)
-      next
-    end
-
+    submit_task(sid, prompt, display_message: display_message, interrupt: true)
     json(ok: true, meeting_id: mid)
   end
 
@@ -116,16 +109,19 @@ class MeetingExt < Clacky::ApiExtension
 
     mime = json_body["mime_type"].to_s.split(";").first.strip
     mime = "audio/webm" if mime.empty?
-    vocabulary = json_body["vocabulary"].to_s.strip
+    vocabulary = merge_vocabulary(json_body["vocabulary"])
     result = call_stt(audio_b64, mime, vocabulary)
 
     if result["success"]
       text = result["text"].to_s.strip
-      unless text.empty?
+      transcript_path = File.join(dir, "transcript.jsonl")
+      if !text.empty? && !hallucinated_transcript?(text, vocabulary, transcript_path)
         entry = { ts: Time.now.utc.iso8601, text: text }
-        File.open(File.join(dir, "transcript.jsonl"), "a") { |f| f.puts(JSON.generate(entry)) }
+        File.open(transcript_path, "a") { |f| f.puts(JSON.generate(entry)) }
+        json(text: text)
+      else
+        json(text: "")
       end
-      json(text: text)
     else
       error!(result["error"] || "STT failed", status: 502)
     end
@@ -138,11 +134,21 @@ class MeetingExt < Clacky::ApiExtension
   # Submits a question to the session agent with recent transcript as context.
   post "/ask" do
     sid, mid = json_body.values_at("session_id", "meeting_id")
-    question = json_body["question"]
-    error!("session_id, meeting_id, question required", status: 422) unless sid && mid && question
+    question = json_body["question"].to_s.strip
+    error!("session_id, meeting_id, question required", status: 422) unless sid && mid && !question.empty?
 
     dir = meeting_dir(sid, mid)
     error!("meeting not found", status: 404) unless File.directory?(dir)
+
+    meaningful = question.gsub(/[^\p{L}\p{N}]/, "")
+    if meaningful.length < 4
+      logger.warn("ask: question too short, dropping (question=#{question.inspect})")
+      next json(ok: false, dropped: true, reason: "question_too_short")
+    end
+    if question.match?(/\A(open)?clacky\z/i) || question.match?(/\A小?克\z/) || question.match?(/\A克拉奇\z/)
+      logger.warn("ask: question is a bare wake/brand word, dropping (question=#{question.inspect})")
+      next json(ok: false, dropped: true, reason: "question_is_brand_word")
+    end
 
     context = recent_transcript(dir, minutes: 5)
 
@@ -157,7 +163,7 @@ class MeetingExt < Clacky::ApiExtension
       #{question}
     PROMPT
 
-    submit_task(sid, prompt, display_message: "🎤 #{question}")
+    submit_task(sid, prompt, display_message: "🎤 #{question}", interrupt: true)
     json(ok: true)
   end
 
@@ -284,6 +290,52 @@ class MeetingExt < Clacky::ApiExtension
 
     saved = File.read(VOCABULARY_PATH).strip
     saved.empty? ? "" : saved
+  end
+
+  private def merge_vocabulary(user_terms)
+    parts = SYSTEM_VOCABULARY.split(/\s*,\s*/) + user_terms.to_s.split(/\s*,\s*/)
+    parts.map(&:strip).reject(&:empty?).uniq.join(", ")
+  end
+
+  HALLUCINATION_PHRASES = Set.new(%w[
+    no no. yes yes. ok okay you bye . .. ...
+    thanks thank\ you
+    uh um hmm mm mm-hmm yeah yeah. yep but and so oh ah ahh huh
+    an a i the more well right hi hey wow
+    嗯 啊 哦 呃 谢谢 谢谢观看 谢谢大家 好 好的 对
+  ]).freeze
+
+  DEDUP_WINDOW_SECONDS = 3.0
+
+  private def hallucinated_transcript?(text, vocabulary, transcript_path)
+    normalized = normalize_transcript(text)
+    return true if normalized.empty?
+    return true if HALLUCINATION_PHRASES.include?(normalized)
+    return true if only_vocabulary_term?(normalized, vocabulary)
+    return true if recent_duplicate?(normalized, transcript_path)
+    false
+  end
+
+  private def normalize_transcript(text)
+    text.to_s.downcase.gsub(/[[:space:][:punct:]]+/, " ").strip
+  end
+
+  private def only_vocabulary_term?(normalized, vocabulary)
+    terms = vocabulary.to_s.split(/\s*,\s*/).map { |t| normalize_transcript(t) }.reject(&:empty?)
+    terms.include?(normalized)
+  end
+
+  private def recent_duplicate?(normalized, transcript_path)
+    return false unless File.exist?(transcript_path)
+
+    cutoff = Time.now.utc - DEDUP_WINDOW_SECONDS
+    File.foreach(transcript_path).to_a.last(5).any? do |line|
+      entry = JSON.parse(line) rescue nil
+      next false unless entry
+      ts = Time.parse(entry["ts"].to_s) rescue nil
+      next false unless ts && ts >= cutoff
+      normalize_transcript(entry["text"]) == normalized
+    end
   end
 
   private def recent_transcript(dir, minutes: 5)

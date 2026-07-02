@@ -40,5 +40,6 @@ Produce the summary in this structure:
 1. Be concise — each bullet should be one sentence max.
 2. If speakers are identifiable from context, attribute decisions and actions to them.
 3. Ignore filler words, small talk, and off-topic tangents.
-4. If the transcript is too short or empty, say so and skip the structured output.
+4. **If the transcript is empty, or contains only a handful of repeated words / meaningless fragments (e.g. the same term repeated with no real dialogue), do NOT invent content and do NOT produce the structured output.** Respond with a single short line noting there was no meaningful conversation to summarize, and stop.
 5. Write the summary in the same language the meeting was conducted in.
+6. Do not use tools other than reading the transcript from the user message. Never open a browser, run shell commands, or invoke unrelated skills.

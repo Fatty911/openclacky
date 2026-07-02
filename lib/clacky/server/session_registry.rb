@@ -117,8 +117,15 @@ module Clacky
           src = (session_data[:source] || "manual").to_s
           next if counts[src] >= n
           next if exist?(session_data[:session_id])
-          @session_restorer.call(session_data)
-          counts[src] += 1
+          begin
+            @session_restorer.call(session_data)
+            counts[src] += 1
+          rescue => e
+            Clacky::Logger.warn(
+              "[SessionRegistry] skip session #{session_data[:session_id]}: " \
+              "#{e.class}: #{e.message}"
+            )
+          end
         end
       end
 

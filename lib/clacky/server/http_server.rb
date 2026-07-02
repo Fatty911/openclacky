@@ -367,10 +367,6 @@ module Clacky
             res["Cache-Control"]      = "no-store"
             res["Pragma"]             = "no-cache"
             res.body                  = html
-          elsif req.path.start_with?("/webui_ext/")
-            self.send(:serve_webui_ext, req, res)
-          elsif req.path.start_with?("/builtin_ext/")
-            self.send(:serve_builtin_ext, req, res)
           elsif req.path.start_with?("/agent_ui/")
             self.send(:serve_agent_ui, req, res)
           elsif req.path.start_with?("/panel_ui/")
@@ -387,16 +383,11 @@ module Clacky
         # Auto-create a default session on startup
         create_default_session
 
-        # Load user-defined HTTP API extensions from ~/.clacky/api_ext/.
-        # Done here (not at gem load) so handlers can resolve session_manager
-        # and other host helpers as soon as they are wired up.
-        # The loader logs its own summary via Clacky::Logger.
+        # Load api backends contributed by ext.yml containers into the shared
+        # ApiExtension registry. Each unit mounts at /api/ext/<ext_id>/. Done
+        # here (not at gem load) so handlers can resolve session_manager and
+        # other host helpers as soon as they are wired up.
         Clacky::ApiExtensionLoader.load_all
-
-        # Then load api backends contributed by ext.yml containers (panels with
-        # an `api:` field + top-level `api:` units). Appended after the call
-        # above so they share the registry instead of being reset away.
-        load_container_api_extensions
 
         # Static verification of every ext.yml container: unknown keys, bad
         # scopes, dangling agent→panel references, layer-shadow warnings.
@@ -503,9 +494,9 @@ module Clacky
         path   = req.path
         method = req.request_method
 
-        # User-defined HTTP API extensions live under ~/.clacky/api_ext/<name>/
-        # and mount at /api/ext/<name>/...  Routed through a separate dispatcher
-        # so the host's giant case table stays focused on built-in endpoints.
+        # HTTP API extensions declared in an ext.yml container mount at
+        # /api/ext/<ext_id>/... Routed through a separate dispatcher so the
+        # host's giant case table stays focused on built-in endpoints.
         if path.start_with?(Clacky::Server::ApiExtensionDispatcher::MOUNT_PREFIX)
           return if Clacky::Server::ApiExtensionDispatcher.handle(req, res, http_server: self)
         end
@@ -1053,23 +1044,15 @@ module Clacky
         @agent_config.save
       end
 
-      # Absolute path to the user's WebUI extension directory.
-      WEBUI_EXT_ROOT = File.expand_path("~/.clacky/webui_ext")
-
-      # Built-in extensions bundled with the gem (default_extensions/*/**.js).
-      BUILTIN_EXT_ROOT = File.expand_path("../default_extensions", __dir__)
-
       # Build the full <script> payload injected at {{EXT_SCRIPTS}}:
-      #   1. global extensions   — ~/.clacky/webui_ext/**/*.js  (all agents)
-      #   2. agent-scoped UI     — agents/<name>/webui/**/*.js   (data-agent)
+      #   1. panel→agents registry (which agent profiles reference each panel)
+      #   2. agent-scoped UI     — agents/<name>/webui/**/*.js       (data-agent)
       #   3. official panels     — default_agents/_panels/<id>/**/*.js (data-panel)
-      # Prefixed with a registerPanelAgents() call so the client knows which
-      # agent profiles reference each official panel. Never raises.
+      #   4. ext.yml containers  — panel view.js served from /ext_ui/
+      # Never raises.
       private def webui_ext_script_tags
         [
           panel_agents_script,
-          builtin_ext_script_tags,
-          global_ext_script_tags,
           agent_webui_script_tags,
           official_panel_script_tags,
           container_ext_script_tags,
@@ -1108,24 +1091,34 @@ module Clacky
         "<script>Clacky.ext.registerPanelAgents(#{map.to_json})</script>"
       end
 
-      # { "git" => ["coding", ...], ... } — scan every agent profile.yml for a
-      # `panels:` list and invert it into panel → referencing agents. For a
-      # container-contributed panel with `scope: agent:<name>`, the resulting
-      # set is intersected with the scope so a misreferenced panel never leaks
-      # outside its declared boundary.
+      # panel id => list of agent names allowed to see it. Sources:
+      #   - agent profile.yml `panels:` — official + ext-contributed profiles
+      #   - ext.yml panel `scope: global` (or unset) — visible to all agents
+      #   - ext.yml panel `scope: agent:<name>` — restricted to that agent
+      # `agent:` scope also intersects any profile-declared references so a
+      # misreferenced panel can't leak outside its boundary.
       private def panel_agents_map
         result = Hash.new { |h, k| h[k] = [] }
         agent_profile_data.each do |name, data|
           Array(data["panels"]).each { |panel| result[panel.to_s] << name unless result[panel.to_s].include?(name) }
         end
 
+        all_agents = agent_profile_data.keys
         Array(Clacky::ExtensionLoader.last_result&.panels).each do |unit|
           scope = unit.spec["scope"].to_s
-          next unless scope.start_with?("agent:")
+          scope = "global" if scope.empty?
 
-          allowed = scope.delete_prefix("agent:")
-          if result.key?(unit.id)
-            result[unit.id] = result[unit.id].select { |a| a == allowed }
+          if scope == "global"
+            all_agents.each { |a| result[unit.id] << a unless result[unit.id].include?(a) }
+          elsif scope.start_with?("agent:")
+            allowed = scope.delete_prefix("agent:")
+            existing = result[unit.id]
+            result[unit.id] =
+              if existing.empty?
+                all_agents.include?(allowed) ? [allowed] : []
+              else
+                existing.select { |a| a == allowed }
+              end
           end
         end
         result
@@ -1176,26 +1169,6 @@ module Clacky
         dirs
       end
 
-      # Built-in extensions from default_extensions/*/*.js — loaded before user
-      # extensions so user ~/.clacky/webui_ext/ can override by ext id.
-      private def builtin_ext_script_tags
-        return "" unless Dir.exist?(BUILTIN_EXT_ROOT)
-
-        Dir.glob(File.join(BUILTIN_EXT_ROOT, "*", "**", "*.js")).sort.map do |abs|
-          rel    = abs.delete_prefix(BUILTIN_EXT_ROOT + "/")
-          ext_id = "builtin/" + rel.delete_suffix(".js")
-          src    = "/builtin_ext/#{rel}"
-          "<script>Clacky.ext._extBegin(#{ext_id.to_json}, #{nil.to_json}, #{nil.to_json})</script>" \
-            "<script src=#{src.to_json} data-ext-id=#{ext_id.to_json}></script>" \
-            "<script>Clacky.ext._extEnd()</script>"
-        end.join("\n")
-      end
-
-      # Global extensions — visible for all agents (unchanged legacy behavior).
-      private def global_ext_script_tags
-        ext_script_block(WEBUI_EXT_ROOT, "/webui_ext")
-      end
-
       # Agent-scoped UI: agents/<name>/webui/**/*.js. Each script is tagged with
       # its owning agent so the client only mounts it for that profile.
       private def agent_webui_script_tags
@@ -1241,76 +1214,6 @@ module Clacky
             "<script src=#{src.to_json} data-ext-id=#{ext_id.to_json}></script>" \
             "<script>Clacky.ext._extEnd()</script>"
         end.join("\n")
-      end
-
-      # Serve a static file from ~/.clacky/webui_ext/. Read-only, JS/CSS/HTML only,
-      # with strict path containment so a crafted path cannot escape the dir.
-      private def serve_webui_ext(req, res)
-        rel = req.path.delete_prefix("/webui_ext/")
-        abs = File.expand_path(File.join(WEBUI_EXT_ROOT, rel))
-
-        unless abs.start_with?(WEBUI_EXT_ROOT + File::SEPARATOR) && File.file?(abs)
-          res.status = 404
-          res.body   = "not found"
-          return
-        end
-
-        ext = File.extname(abs)
-        ctype = { ".js" => "application/javascript", ".css" => "text/css",
-                  ".html" => "text/html; charset=utf-8" }[ext]
-        unless ctype
-          res.status = 415
-          res.body   = "unsupported media type"
-          return
-        end
-
-        res.status           = 200
-        res["Content-Type"]  = ctype
-        res["Cache-Control"] = "no-store"
-        res["Pragma"]        = "no-cache"
-        res.body             = File.read(abs)
-      end
-
-      private def serve_builtin_ext(req, res)
-        rel = req.path.delete_prefix("/builtin_ext/")
-        abs = File.expand_path(File.join(BUILTIN_EXT_ROOT, rel))
-
-        unless abs.start_with?(BUILTIN_EXT_ROOT + File::SEPARATOR) && File.file?(abs)
-          res.status = 404
-          res.body   = "not found"
-          return
-        end
-
-        ext = File.extname(abs)
-        ctype = { ".js" => "application/javascript", ".css" => "text/css" }[ext]
-        unless ctype
-          res.status = 415
-          res.body   = "unsupported media type"
-          return
-        end
-
-        res.status           = 200
-        res["Content-Type"]  = ctype
-        res["Cache-Control"] = "no-store"
-        res["Pragma"]        = "no-cache"
-        res.body             = File.read(abs)
-      end
-
-      # Load api backends declared by ext.yml containers into the shared
-      # ApiExtension registry. Each unit mounts at /api/ext/<ext_id>/. Failures
-      # are isolated per unit and logged; never aborts startup.
-      private def load_container_api_extensions
-        result = Clacky::ExtensionLoader.load_all
-        result.api.each do |unit|
-          r = Clacky::ApiExtensionLoader::Result.new(loaded: [], skipped: [])
-          Clacky::ApiExtensionLoader.load_one(unit.ext_id, unit.id, unit.dir, unit.spec["handler_abs"], r)
-          r.skipped.each { |(id, reason)| Clacky::Logger.warn("[ExtensionLoader] skip api #{id}: #{reason}") }
-        end
-        result.errors.each do |e|
-          Clacky::Logger.warn("[ExtensionLoader] #{e.ext_id} #{e.unit} — #{e.message}")
-        end
-      rescue StandardError => e
-        Clacky::Logger.error("[ExtensionLoader] container api load failed: #{e.message}")
       end
 
       # Whole-program static checks over ext.yml — unknown keys, bad scopes,
@@ -6077,8 +5980,14 @@ module Clacky
         return unless @registry.exist?(session_id)
 
         agent = nil
-        @registry.with_session(session_id) { |s| agent = s[:agent] }
+        web_ui = nil
+        @registry.with_session(session_id) do |s|
+          agent = s[:agent]
+          web_ui = s[:ui]
+        end
         return unless agent
+
+        web_ui&.show_user_message(display_message, source: :web) if display_message
 
         run_agent_task(session_id, agent) { agent.run(prompt, display_text: display_message) }
       end

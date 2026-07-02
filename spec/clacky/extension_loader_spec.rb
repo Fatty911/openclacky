@@ -26,20 +26,20 @@ RSpec.describe Clacky::ExtensionLoader do
   end
 
   describe ".load_all" do
-    it "resolves a panel unit with an inline api backend" do
+    it "resolves a panel unit alongside a top-level api backend" do
       manifest = <<~YAML
         id: hello
         origin: self
         contributes:
+          api: api/handler.rb
           panels:
             - id: hello
               view: panels/hello/view.js
-              api: panels/hello/handler.rb
               scope: global
       YAML
       make_container(local, "hello", manifest: manifest, files: {
-        "panels/hello/view.js"    => "// view",
-        "panels/hello/handler.rb" => "# handler",
+        "panels/hello/view.js" => "// view",
+        "api/handler.rb"       => "# handler",
       })
 
       result = described_class.load_all(layers: layers)
@@ -54,7 +54,7 @@ RSpec.describe Clacky::ExtensionLoader do
 
       api = result.api.first
       expect(api.ext_id).to eq("hello")
-      expect(api.spec["handler_abs"]).to end_with("panels/hello/handler.rb")
+      expect(api.spec["handler_abs"]).to end_with("api/handler.rb")
     end
 
     it "lets a higher layer override the same id and records the override" do
@@ -535,37 +535,6 @@ RSpec.describe Clacky::ExtensionLoader do
       first = described_class.load_all(layers: layers)
       forced = described_class.load_all(layers: layers, force: true)
       expect(forced).not_to be(first)
-    end
-  end
-
-  describe "api id collision" do
-    it "errors when a top-level api unit reuses a panel-derived api id" do
-      manifest = <<~YAML
-        id: clash
-        origin: self
-        contributes:
-          panels:
-            - id: dashboard
-              view: panels/dashboard/view.js
-              api: panels/dashboard/handler.rb
-          api:
-            - id: dashboard
-              handler: api/dashboard.rb
-      YAML
-      make_container(local, "clash", manifest: manifest, files: {
-        "panels/dashboard/view.js"    => "// view",
-        "panels/dashboard/handler.rb" => "# panel handler",
-        "api/dashboard.rb"            => "# api handler",
-      })
-
-      result = described_class.load_all(layers: layers, force: true)
-
-      expect(result.api.size).to eq(1)
-      expect(result.api.first.spec["handler_abs"]).to end_with("panels/dashboard/handler.rb")
-
-      collision = result.errors.find { |e| e.message.include?("already contributed") }
-      expect(collision).not_to be_nil
-      expect(collision.unit).to eq("api/dashboard")
     end
   end
 end

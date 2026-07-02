@@ -58,28 +58,22 @@ module Clacky
         # Local-app convenience: see ApiExtensionLoader.ensure_fresh — that is
         # the single source of truth for per-request hot reload.
 
-        # /api/ext/<ext_id>/<unit_id>/<rest> → [MountId string, "/<rest>"]
+        # /api/ext/<ext_id>/<sub-path> → [ext_id, "/<sub-path>"]
         private def parse_path(path)
           return [nil, nil] unless path.to_s.start_with?(MOUNT_PREFIX)
 
           tail = path[MOUNT_PREFIX.length..]
-          first = tail.index("/")
-          return [nil, nil] unless first
-
-          ext_id = tail[0...first]
-          rest = tail[(first + 1)..]
-          second = rest.index("/")
-          if second
-            unit_id = rest[0...second]
-            sub = rest[second..]
+          slash = tail.index("/")
+          if slash
+            ext_id = tail[0...slash]
+            sub = tail[slash..]
           else
-            unit_id = rest
+            ext_id = tail
             sub = "/"
           end
-          mid = Clacky::Extension::MountId.new(ext_id, unit_id)
-          return [nil, nil] if mid.ext_id.empty? || mid.unit_id.empty?
+          return [nil, nil] if ext_id.empty?
 
-          [mid.to_s, sub]
+          [ext_id, sub]
         end
 
         private def find_route(klass, method, sub_path)
@@ -105,10 +99,10 @@ module Clacky
         rescue Clacky::ApiExtension::Halt => halt
           write_response(res, halt.status, halt.payload, halt.content_type)
         rescue Timeout::Error
-          Clacky::Logger.warn("[api_ext:#{klass.mount_id}] Timed out after #{timeout_sec}s on #{route.method.upcase} #{route.pattern}")
+          Clacky::Logger.warn("[api_ext:#{klass.ext_id}] Timed out after #{timeout_sec}s on #{route.method.upcase} #{route.pattern}")
           write_json(res, 503, error: "request timed out")
         rescue StandardError => e
-          Clacky::Logger.warn("[api_ext:#{klass.mount_id}] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+          Clacky::Logger.warn("[api_ext:#{klass.ext_id}] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
           write_json(res, 500, error: e.message)
         end
 

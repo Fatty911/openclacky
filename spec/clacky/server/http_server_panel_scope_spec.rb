@@ -104,4 +104,25 @@ RSpec.describe Clacky::Server::HttpServer, "extension panel scope" do
 
     expect(server.send(:panel_agents_map)["canvas"]).to eq([])
   end
+
+  it "gives a scope: global panel visibility to every known agent even when no profile references it" do
+    manifest = <<~YAML
+      id: meeting-pack
+      origin: self
+      contributes:
+        panels:
+          - id: meeting
+            view: panels/meeting/view.js
+            scope: global
+    YAML
+    make_ext(local, "meeting-pack", manifest, "panels/meeting/view.js" => "")
+
+    reload_layers
+    stub_agent_profiles(
+      "general" => {},
+      "coding"  => { "panels" => ["git"] }
+    )
+
+    expect(server.send(:panel_agents_map)["meeting"]).to contain_exactly("general", "coding")
+  end
 end

@@ -7,25 +7,21 @@ require "stringio"
 RSpec.describe Clacky::Server::ApiExtensionDispatcher do
   before { Clacky::ApiExtension.reset_registry! }
 
-  # Fake req/res that look enough like WEBrick objects for the dispatcher.
   let(:res) { WEBrick::HTTPResponse.new(WEBrick::Config::HTTP) }
 
   def make_req(method, path, body: nil)
-    req = double("req",
+    double("req",
       path: path,
       request_method: method,
       body: body,
       query: {})
-    req
   end
 
-  def register_ext(ext_id, klass, unit_id: nil)
-    unit_id ||= ext_id
+  def register_ext(ext_id, klass)
     klass.ext_id = ext_id
-    klass.unit_id = unit_id
     klass.ext_dir = Dir.mktmpdir
     klass.meta = {}
-    Clacky::ApiExtension.register("#{ext_id}/#{unit_id}", klass)
+    Clacky::ApiExtension.register(ext_id, klass)
   end
 
   describe ".handle" do
@@ -37,7 +33,7 @@ RSpec.describe Clacky::Server::ApiExtensionDispatcher do
       end
       register_ext("things", ext)
 
-      req = make_req("GET", "/api/ext/things/things/items/42")
+      req = make_req("GET", "/api/ext/things/items/42")
       described_class.handle(req, res, http_server: nil)
 
       expect(res.status).to eq(200)
@@ -46,7 +42,7 @@ RSpec.describe Clacky::Server::ApiExtensionDispatcher do
     end
 
     it "returns 404 when extension id is unknown" do
-      req = make_req("GET", "/api/ext/missing/missing/foo")
+      req = make_req("GET", "/api/ext/missing/foo")
       described_class.handle(req, res, http_server: nil)
       expect(res.status).to eq(404)
     end
@@ -59,7 +55,7 @@ RSpec.describe Clacky::Server::ApiExtensionDispatcher do
       end
       register_ext("ext1", ext)
 
-      req = make_req("GET", "/api/ext/ext1/ext1/unknown")
+      req = make_req("GET", "/api/ext/ext1/unknown")
       described_class.handle(req, res, http_server: nil)
       expect(res.status).to eq(404)
     end
@@ -72,7 +68,7 @@ RSpec.describe Clacky::Server::ApiExtensionDispatcher do
       end
       register_ext("ext2", ext)
 
-      req = make_req("GET", "/api/ext/ext2/ext2/boom")
+      req = make_req("GET", "/api/ext/ext2/boom")
       described_class.handle(req, res, http_server: nil)
 
       expect(res.status).to eq(500)
@@ -87,7 +83,7 @@ RSpec.describe Clacky::Server::ApiExtensionDispatcher do
       end
       register_ext("ext3", ext)
 
-      req = make_req("POST", "/api/ext/ext3/ext3/v")
+      req = make_req("POST", "/api/ext/ext3/v")
       described_class.handle(req, res, http_server: nil)
       expect(res.status).to eq(422)
       expect(JSON.parse(res.body)["error"]).to eq("bad")
@@ -102,7 +98,7 @@ RSpec.describe Clacky::Server::ApiExtensionDispatcher do
       end
       register_ext("ext4", ext)
 
-      req = make_req("GET", "/api/ext/ext4/ext4/slow")
+      req = make_req("GET", "/api/ext/ext4/slow")
       described_class.handle(req, res, http_server: nil)
       expect(res.status).to eq(503)
     end
@@ -121,9 +117,9 @@ RSpec.describe Clacky::Server::ApiExtensionDispatcher do
       end
       register_ext("hook", ext)
 
-      expect(described_class.public_path?("/api/ext/hook/hook/in", "POST")).to be true
-      expect(described_class.public_path?("/api/ext/hook/hook/private", "GET")).to be false
-      expect(described_class.public_path?("/api/ext/missing/missing/in", "POST")).to be false
+      expect(described_class.public_path?("/api/ext/hook/in", "POST")).to be true
+      expect(described_class.public_path?("/api/ext/hook/private", "GET")).to be false
+      expect(described_class.public_path?("/api/ext/missing/in", "POST")).to be false
     end
   end
 end

@@ -29,7 +29,7 @@
           '<pre id="ws-out" style="margin-top:12px;white-space:pre-wrap;"></pre>' +
         '</div>';
       container.querySelector("#ws-load-stats").addEventListener("click", async function () {
-        var res = await fetch("/api/ext/" + EXT + "/stats/");
+        var res = await fetch("/api/ext/" + EXT + "/stats");
         container.querySelector("#ws-out").textContent =
           JSON.stringify(await res.json(), null, 2);
       });
@@ -97,6 +97,30 @@
   });
 
   // ── 3. Session aside: a tab in the right column (tabbed slot) ──
+  //
+  // This form (spec = plain function) is stateless: every time the tab is
+  // shown the render runs from scratch. Fine for panels that are pure
+  // reflections of server data.
+  //
+  // If you need a runtime that lives as long as the session (a canvas'
+  // undo stack, a running audio recorder, a websocket client), pass an
+  // object with `create(ctx)` / `render(container, ctx, runtime)` /
+  // optional `runtime.dispose()`. `create` runs once per session and its
+  // return value is passed to every `render`; `dispose` runs when the
+  // session leaves the sidebar. Example:
+  //
+  //   Clacky.ext.ui.mount("session.aside", {
+  //     create(ctx) {
+  //       const state = { count: 0 };
+  //       return { state, dispose() { /* release resources */ } };
+  //     },
+  //     render(container, ctx, runtime) {
+  //       const btn = document.createElement("button");
+  //       btn.textContent = "Clicked " + runtime.state.count + " times";
+  //       btn.onclick = () => { runtime.state.count++; render(container, ctx, runtime); };
+  //       container.appendChild(btn);
+  //     },
+  //   }, { tab: { id: "counter", label: "Counter" } });
   Clacky.ext.ui.mount("session.aside", function (ctx) {
     var el = document.createElement("div");
     el.style.padding = "16px";
@@ -109,7 +133,7 @@
     out.style.cssText = "margin-top:12px;white-space:pre-wrap;";
 
     btn.addEventListener("click", async function () {
-      var res = await fetch("/api/ext/" + EXT + "/stats/");
+      var res = await fetch("/api/ext/" + EXT + "/stats");
       out.textContent = JSON.stringify(await res.json(), null, 2);
     });
 

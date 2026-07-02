@@ -1,8 +1,0 @@
-# frozen_string_literal: true
-
-# Standalone api unit. Mounted at /api/ext/<%= slug %>/stats/.
-class <%= const_prefix %>Stats < Clacky::ApiExtension
-  get "/" do
-    json(uptime: Process.clock_gettime(Process::CLOCK_MONOTONIC).round(2))
-  end
-end

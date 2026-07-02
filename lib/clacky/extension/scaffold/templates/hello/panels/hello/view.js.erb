@@ -1,6 +1,6 @@
 // Hello panel for the "<%= slug %>" extension.
 // Mounts a tab in the session aside; talks to its backend at
-// /api/ext/<%= slug %>/hello/. Reload the WebUI page to see edits.
+// /api/ext/<%= slug %>/. Reload the WebUI page to see edits.
 //
 // Styling: use host classes (btn-primary, btn-secondary, form-input,
 // form-textarea, form-label) so extensions inherit theme + hover
@@ -17,7 +17,7 @@
     out.style.cssText = "margin-top:12px;white-space:pre-wrap;";
 
     btn.addEventListener("click", async function () {
-      var res = await fetch("/api/ext/<%= slug %>/hello/");
+      var res = await fetch("/api/ext/<%= slug %>/");
       out.textContent = JSON.stringify(await res.json(), null, 2);
     });
 
