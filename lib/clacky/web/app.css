@@ -8184,6 +8184,8 @@ body.setup-mode[data-theme="dark"] {
   flex-shrink: 0;
 }
 
+.brand-warning-bar > span { flex: 1; }
+
 .brand-warning-bar button {
   background: transparent;
   border: none;
@@ -8192,6 +8194,20 @@ body.setup-mode[data-theme="dark"] {
   font-size: 0.875rem;
   padding: 0 0.25rem;
   opacity: 0.7;
+}
+
+.brand-warning-bar .brand-warning-renew-btn {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm, 4px);
+  color: var(--color-warning);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  opacity: 0.9;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .brand-warning-bar button:hover { opacity: 1; }
