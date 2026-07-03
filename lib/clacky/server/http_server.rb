@@ -536,6 +536,7 @@ module Clacky
         when ["POST",   "/api/onboard/complete"]  then api_onboard_complete(req, res)
         when ["POST",   "/api/onboard/skip-soul"] then api_onboard_skip_soul(req, res)
         when ["GET",    "/api/store/skills"]          then api_store_skills(res)
+        when ["GET",    "/api/store/extensions"]      then api_store_extensions(req, res)
         when ["GET",    "/api/brand/status"]      then api_brand_status(res)
         when ["POST",   "/api/brand/activate"]    then api_brand_activate(req, res)
         when ["DELETE", "/api/brand/license"]     then api_brand_deactivate(res)
@@ -2210,6 +2211,27 @@ module Clacky
             ok:      true,
             skills:  [],
             warning: result[:error] || "Could not reach the skill store."
+          })
+        end
+      end
+
+      # GET /api/store/extensions?q=&sort=
+      #
+      # Public extension marketplace catalog. Anonymous (no license needed).
+      # Proxies BrandConfig#search_extensions! which hits the platform's public
+      # /api/v1/extensions endpoint. Extension archives are NOT downloadable here
+      # — they ship inside license-gated brand packages (path B distribution).
+      def api_store_extensions(req, res)
+        brand  = Clacky::BrandConfig.load
+        result = brand.search_extensions!(query: req.query["q"], sort: req.query["sort"])
+
+        if result[:success]
+          json_response(res, 200, { ok: true, extensions: result[:extensions] })
+        else
+          json_response(res, 200, {
+            ok:         true,
+            extensions: [],
+            warning:    result[:error] || "Could not reach the extension store."
           })
         end
       end

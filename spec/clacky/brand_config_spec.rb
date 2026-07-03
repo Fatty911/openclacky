@@ -293,4 +293,48 @@ RSpec.describe Clacky::BrandConfig do
       )
     end
   end
+
+  describe "#search_extensions!" do
+    let(:config) { described_class.new({}) }
+    let(:fake_client) { double("PlatformHttpClient") }
+
+    before { allow(config).to receive(:platform_client).and_return(fake_client) }
+
+    it "returns extensions on success" do
+      allow(fake_client).to receive(:get)
+        .with("/api/v1/extensions?q=weather&sort=newest")
+        .and_return(success: true, data: { "extensions" => [{ "name" => "weather" }] })
+
+      result = config.search_extensions!(query: "weather", sort: "newest")
+      expect(result[:success]).to be true
+      expect(result[:extensions]).to eq([{ "name" => "weather" }])
+    end
+
+    it "omits blank query and sort params" do
+      allow(fake_client).to receive(:get)
+        .with("/api/v1/extensions")
+        .and_return(success: true, data: { "extensions" => [] })
+
+      result = config.search_extensions!(query: "  ", sort: nil)
+      expect(result[:success]).to be true
+      expect(result[:extensions]).to eq([])
+    end
+
+    it "returns error on failure" do
+      allow(fake_client).to receive(:get).and_return(success: false, error: "boom")
+
+      result = config.search_extensions!
+      expect(result[:success]).to be false
+      expect(result[:error]).to eq("boom")
+      expect(result[:extensions]).to eq([])
+    end
+
+    it "handles network exceptions" do
+      allow(fake_client).to receive(:get).and_raise(StandardError.new("timeout"))
+
+      result = config.search_extensions!(query: "x")
+      expect(result[:success]).to be false
+      expect(result[:error]).to include("Network error")
+    end
+  end
 end

@@ -1214,7 +1214,7 @@ module Clacky
       exit 1 if result.skipped.any?
     end
 
-    desc "ext SUBCOMMAND", "Manage extension containers (new, verify, list, reload)"
+    desc "ext SUBCOMMAND", "Manage extension containers (new, verify, list, pack, install, publish, search)"
     subcommand "ext", Clacky::CliExtensionCommands
 
     desc "billing", "Show billing summary and usage statistics"

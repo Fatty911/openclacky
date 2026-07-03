@@ -668,6 +668,24 @@ module Clacky
       end
     end
 
+    # Search the public extension marketplace. Anonymous — no license required.
+    # Uses GET /api/v1/extensions. Returns { success:, extensions: [], error: }.
+    def search_extensions!(query: nil, sort: nil)
+      params = {}
+      params["q"]    = query if query && !query.to_s.strip.empty?
+      params["sort"] = sort  if sort && !sort.to_s.strip.empty?
+      qs   = params.empty? ? "" : "?#{URI.encode_www_form(params)}"
+      response = platform_client.get("/api/v1/extensions#{qs}")
+
+      if response[:success]
+        { success: true, extensions: response[:data]["extensions"] || [] }
+      else
+        { success: false, error: response[:error] || "Search failed", extensions: [] }
+      end
+    rescue StandardError => e
+      { success: false, error: "Network error: #{e.message}", extensions: [] }
+    end
+
     # ── Brand extensions (parallels the brand-skill download path) ──
     # Extensions bundled into the activated license's distribution are free and
     # unencrypted. They are fetched over the same license-HMAC scheme as brand

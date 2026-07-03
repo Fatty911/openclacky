@@ -193,5 +193,34 @@ module Clacky
       end
     end
 
+    desc "search [QUERY]", "Search the public extension marketplace"
+    method_option :sort, type: :string, default: "newest",
+                         desc: "Sort order: newest, updated, downloads"
+    def search(query = nil)
+      brand  = Clacky::BrandConfig.load
+      result = brand.search_extensions!(query: query, sort: options[:sort])
+
+      unless result[:success]
+        warn "Error: #{result[:error]}"
+        exit 1
+      end
+
+      extensions = result[:extensions]
+      if extensions.empty?
+        puts query ? "No extensions found for #{query.inspect}." : "No extensions available yet."
+        return
+      end
+
+      extensions.each do |ext|
+        emoji = ext["emoji"] || "🧩"
+        ver   = ext["version"]
+        units = (ext["units"] || {}).map { |k, v| "#{v} #{k}" }.join(", ")
+        name  = ext["name_zh"] || ext["name"]
+        puts "#{emoji}  #{name}#{ver ? "  v#{ver}" : ""}#{units.empty? ? "" : "  (#{units})"}"
+        desc = ext["description_zh"] || ext["description"]
+        puts "    #{desc}" if desc && !desc.to_s.strip.empty?
+      end
+    end
+
   end
 end
