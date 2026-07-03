@@ -9,7 +9,10 @@ contributes:
     - id: dashboard
       title: Dashboard
       view: panels/dashboard/view.js
-      scope: agent:designer        # only visible to the `designer` agent below
+      # No `attach:` — visibility is driven by the `designer` agent below,
+      # which references it via `panels: [dashboard]`. Set
+      # `attach: [<agent-id>]` (or `["*"]`) if you want the panel author to
+      # suggest a default mount without requiring agent-side references.
   skills:
     - id: <%= slug %>-skill        # SKILL.md under skills/<%= slug %>-skill/
   agents:

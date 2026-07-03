@@ -1,0 +1,9 @@
+id: time_machine
+name: Time Machine
+description: Vertical timeline of session tasks with per-task diff and one-click restore
+version: "0.1.0"
+origin: self
+contributes:
+  panels:
+    - id: time_machine
+      view: panels/time_machine/view.js

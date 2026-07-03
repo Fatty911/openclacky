@@ -40,7 +40,9 @@ module Clacky
       result.units.each do |u|
         case u.kind
         when :panel
-          puts "[OK]   #{u.ext_id}/#{u.id} (panel, scope=#{u.spec['scope']}, #{u.layer})"
+          attach = Array(u.spec["attach"])
+          suffix = attach.empty? ? "" : ", attach=#{attach.inspect}"
+          puts "[OK]   #{u.ext_id}/#{u.id} (panel#{suffix}, #{u.layer})"
         when :api
           puts "[OK]   #{u.ext_id} (api → /api/ext/#{u.ext_id}/, #{u.layer})"
         else
@@ -77,7 +79,9 @@ module Clacky
         units.each do |u|
           case u.kind
           when :panel
-            puts "  panel  #{u.id}  scope=#{u.spec['scope']}"
+            attach = Array(u.spec["attach"])
+            suffix = attach.empty? ? "" : "  attach=#{attach.inspect}"
+            puts "  panel  #{u.id}#{suffix}"
           when :api
             puts "  api    → /api/ext/#{ext_id}/"
           else

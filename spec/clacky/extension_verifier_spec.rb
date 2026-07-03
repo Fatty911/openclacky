@@ -65,7 +65,7 @@ RSpec.describe Clacky::ExtensionVerifier do
         panels:
           - id: hello
             title: Hello
-            scope: global
+            attach: ["*"]
             view: view.js
             mistypedField: yes
     YAML
@@ -107,7 +107,6 @@ RSpec.describe Clacky::ExtensionVerifier do
         panels:
           - id: dash
             title: Dash
-            scope: agent:designer
             view: view.js
         agents:
           - id: designer
@@ -131,7 +130,7 @@ RSpec.describe Clacky::ExtensionVerifier do
         panels:
           - id: hello
             title: Hello
-            scope: global
+            attach: ["*"]
             view: nope.js
     YAML
     make_ext(local, "missing-view", manifest)
@@ -151,5 +150,43 @@ RSpec.describe Clacky::ExtensionVerifier do
     over = issues.find { |i| i.code == "override" }
     expect(over).not_to be_nil
     expect(over.level).to eq(:warning)
+  end
+
+  it "flags a malformed panel `attach` value" do
+    manifest = <<~YAML
+      id: bad-attach
+      origin: self
+      contributes:
+        panels:
+          - id: hello
+            view: view.js
+            attach: nope
+    YAML
+    make_ext(local, "bad-attach", manifest, "view.js" => "//")
+    result = reload_layers
+
+    issues = described_class.verify(result)
+    bad = issues.find { |i| i.code == "schema.bad_attach" }
+    expect(bad).not_to be_nil
+    expect(bad.level).to eq(:error)
+  end
+
+  it "warns when panel.attach references a non-existent agent" do
+    manifest = <<~YAML
+      id: dangling-attach
+      origin: self
+      contributes:
+        panels:
+          - id: hello
+            view: view.js
+            attach: [nobody]
+    YAML
+    make_ext(local, "dangling-attach", manifest, "view.js" => "//")
+    result = reload_layers
+
+    issues = described_class.verify(result)
+    miss = issues.find { |i| i.code == "ref.missing_attach_agent" }
+    expect(miss).not_to be_nil
+    expect(miss.level).to eq(:warning)
   end
 end

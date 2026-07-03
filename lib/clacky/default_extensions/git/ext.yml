@@ -1,0 +1,9 @@
+id: git
+name: Git
+description: Changes panel — a friendly view of what the AI changed in the working tree
+version: "0.1.0"
+origin: self
+contributes:
+  panels:
+    - id: git
+      view: panels/git/view.js

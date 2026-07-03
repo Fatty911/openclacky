@@ -19,15 +19,15 @@ module Clacky
     KNOWN_TOP_KEYS    = %w[id name title description version origin license_required keywords contributes].freeze
     KNOWN_CONTRIBUTES = %w[panels api skills agents channels patches hooks].freeze
 
-    PANEL_KEYS   = %w[id title scope view api].freeze
+    PANEL_KEYS   = %w[id title title_zh description description_zh view order attach].freeze
     API_KEYS     = %w[id handler].freeze
     SKILL_KEYS   = %w[id dir protected].freeze
-    AGENT_KEYS   = %w[id title description prompt panels skills].freeze
+    AGENT_KEYS   = %w[id title title_zh description description_zh order prompt panels skills].freeze
     CHANNEL_KEYS = %w[id platform adapter].freeze
     PATCH_KEYS   = %w[target file fingerprint on_mismatch].freeze
     HOOK_KEYS    = %w[event file].freeze
 
-    SCOPE_RE = /\A(global|agent:[\w\-]+|panel:[\w\-]+)\z/.freeze
+    ATTACH_TOKEN_RE = /\A(\*|[\w\-]+)\z/.freeze
 
     class << self
       # Run all checks against a fully-loaded ExtensionLoader::Result. Returns
@@ -108,13 +108,13 @@ module Clacky
 
         Array(contributes["panels"]).each do |entry|
           next unless entry.is_a?(Hash)
-          scope = entry["scope"]
-          next if scope.nil? || scope.to_s.empty?
-          unless scope.to_s.match?(SCOPE_RE)
+          attach = entry["attach"]
+          next if attach.nil?
+          unless attach.is_a?(Array) && attach.all? { |t| t.is_a?(String) && t.match?(ATTACH_TOKEN_RE) }
             issues << Issue.new(
-              ext: ext_id, unit: entry["id"], level: :error, code: "schema.bad_scope",
-              message: "panel scope #{scope.inspect} is not one of `global` / `agent:<id>` / `panel:<id>`",
-              file: manifest_path, hint: nil
+              ext: ext_id, unit: entry["id"], level: :error, code: "schema.bad_attach",
+              message: "panel `attach` must be an array of agent ids or `\"*\"`, got #{attach.inspect}",
+              file: manifest_path, hint: 'Example: attach: [coding]  or  attach: ["*"]'
             )
           end
         end
@@ -168,16 +168,16 @@ module Clacky
         end
 
         result.panels.each do |panel|
-          scope = panel.spec && panel.spec["scope"]
-          next unless scope.is_a?(String) && scope.start_with?("agent:")
-          target = scope.sub("agent:", "")
-          next if agent_ids.include?(target)
-          issues << Issue.new(
-            ext: panel.ext_id, unit: panel.id, level: :warning, code: "ref.missing_scope_agent",
-            message: "panel scope `#{scope}` refers to an agent not present in any container",
-            file: File.join(panel.dir, "ext.yml"),
-            hint: "User-defined agents resolve at runtime; verify the id spelling."
-          )
+          Array(panel.spec && panel.spec["attach"]).each do |target|
+            next if target == "*"
+            next if agent_ids.include?(target)
+            issues << Issue.new(
+              ext: panel.ext_id, unit: panel.id, level: :warning, code: "ref.missing_attach_agent",
+              message: "panel `attach` references agent #{target.inspect} not present in any container",
+              file: File.join(panel.dir, "ext.yml"),
+              hint: "User-defined agents resolve at runtime; verify the id spelling."
+            )
+          end
         end
 
         issues

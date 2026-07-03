@@ -4,7 +4,7 @@ require "spec_helper"
 require "clacky/server/http_server"
 require "clacky/agent_config"
 
-RSpec.describe Clacky::Server::HttpServer, "extension panel scope" do
+RSpec.describe Clacky::Server::HttpServer, "extension panel visibility" do
   let(:builtin)   { Dir.mktmpdir }
   let(:installed) { Dir.mktmpdir }
   let(:local)     { Dir.mktmpdir }
@@ -45,7 +45,7 @@ RSpec.describe Clacky::Server::HttpServer, "extension panel scope" do
     allow(server).to receive(:agent_profile_data).and_return(map)
   end
 
-  it "intersects panel→agents with scope: agent:<name>" do
+  it "attach: [<agent>] mounts the panel on that agent" do
     manifest = <<~YAML
       id: canvas-pack
       origin: self
@@ -53,59 +53,17 @@ RSpec.describe Clacky::Server::HttpServer, "extension panel scope" do
         panels:
           - id: canvas
             view: panels/canvas/view.js
-            scope: agent:designer
+            attach: [designer]
     YAML
     make_ext(local, "canvas-pack", manifest, "panels/canvas/view.js" => "")
 
     reload_layers
-    stub_agent_profiles(
-      "designer" => { "panels" => ["canvas"] },
-      "coding"   => { "panels" => ["canvas"] }
-    )
+    stub_agent_profiles("designer" => {}, "coding" => {})
 
-    expect(server.send(:panel_agents_map)["canvas"]).to eq(["designer"])
+    expect(server.send(:panel_agents_map)["canvas-pack/canvas"]).to eq(["designer"])
   end
 
-  it "leaves a scope: global panel's references untouched" do
-    manifest = <<~YAML
-      id: git-pack
-      origin: self
-      contributes:
-        panels:
-          - id: git
-            view: panels/git/view.js
-            scope: global
-    YAML
-    make_ext(local, "git-pack", manifest, "panels/git/view.js" => "")
-
-    reload_layers
-    stub_agent_profiles(
-      "designer" => { "panels" => ["git"] },
-      "coding"   => { "panels" => ["git"] }
-    )
-
-    expect(server.send(:panel_agents_map)["git"]).to contain_exactly("designer", "coding")
-  end
-
-  it "yields an empty referencing list when no agent points at a scoped panel" do
-    manifest = <<~YAML
-      id: canvas-pack
-      origin: self
-      contributes:
-        panels:
-          - id: canvas
-            view: panels/canvas/view.js
-            scope: agent:designer
-    YAML
-    make_ext(local, "canvas-pack", manifest, "panels/canvas/view.js" => "")
-
-    reload_layers
-    stub_agent_profiles("coding" => { "panels" => ["git"] })
-
-    expect(server.send(:panel_agents_map)["canvas"]).to eq([])
-  end
-
-  it "gives a scope: global panel visibility to every known agent even when no profile references it" do
+  it 'attach: ["*"] makes the panel visible to every known agent' do
     manifest = <<~YAML
       id: meeting-pack
       origin: self
@@ -113,16 +71,68 @@ RSpec.describe Clacky::Server::HttpServer, "extension panel scope" do
         panels:
           - id: meeting
             view: panels/meeting/view.js
-            scope: global
+            attach: ["*"]
     YAML
     make_ext(local, "meeting-pack", manifest, "panels/meeting/view.js" => "")
 
     reload_layers
+    stub_agent_profiles("general" => {}, "coding" => {})
+
+    expect(server.send(:panel_agents_map)["meeting-pack/meeting"]).to contain_exactly("general", "coding")
+  end
+
+  it "no attach and no agent reference — panel stays hidden" do
+    manifest = <<~YAML
+      id: canvas-pack
+      origin: self
+      contributes:
+        panels:
+          - id: canvas
+            view: panels/canvas/view.js
+    YAML
+    make_ext(local, "canvas-pack", manifest, "panels/canvas/view.js" => "")
+
+    reload_layers
+    stub_agent_profiles("coding" => {})
+
+    expect(server.send(:panel_agents_map)["canvas-pack/canvas"]).to eq([])
+  end
+
+  it "agent.panels reference alone mounts the panel (opt-in)" do
+    manifest = <<~YAML
+      id: canvas-pack
+      origin: self
+      contributes:
+        panels:
+          - id: canvas
+            view: panels/canvas/view.js
+    YAML
+    make_ext(local, "canvas-pack", manifest, "panels/canvas/view.js" => "")
+
+    reload_layers
+    stub_agent_profiles("designer" => { "panels" => ["canvas-pack/canvas"] })
+
+    expect(server.send(:panel_agents_map)["canvas-pack/canvas"]).to eq(["designer"])
+  end
+
+  it "attach + agent reference union without duplicates" do
+    manifest = <<~YAML
+      id: canvas-pack
+      origin: self
+      contributes:
+        panels:
+          - id: canvas
+            view: panels/canvas/view.js
+            attach: [designer]
+    YAML
+    make_ext(local, "canvas-pack", manifest, "panels/canvas/view.js" => "")
+
+    reload_layers
     stub_agent_profiles(
-      "general" => {},
-      "coding"  => { "panels" => ["git"] }
+      "designer" => { "panels" => ["canvas-pack/canvas"] },
+      "coding"   => { "panels" => ["canvas-pack/canvas"] }
     )
 
-    expect(server.send(:panel_agents_map)["meeting"]).to contain_exactly("general", "coding")
+    expect(server.send(:panel_agents_map)["canvas-pack/canvas"]).to contain_exactly("designer", "coding")
   end
 end

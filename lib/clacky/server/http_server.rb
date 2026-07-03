@@ -369,8 +369,6 @@ module Clacky
             res.body                  = html
           elsif req.path.start_with?("/agent_ui/")
             self.send(:serve_agent_ui, req, res)
-          elsif req.path.start_with?("/panel_ui/")
-            self.send(:serve_panel_ui, req, res)
           elsif req.path.start_with?("/ext_ui/")
             self.send(:serve_ext_ui, req, res)
           else
@@ -1046,34 +1044,31 @@ module Clacky
 
       # Build the full <script> payload injected at {{EXT_SCRIPTS}}:
       #   1. panel→agents registry (which agent profiles reference each panel)
-      #   2. agent-scoped UI     — agents/<name>/webui/**/*.js       (data-agent)
-      #   3. official panels     — default_agents/_panels/<id>/**/*.js (data-panel)
-      #   4. ext.yml containers  — panel view.js served from /ext_ui/
+      #   2. agent-scoped UI     — user ~/.clacky/agents/<name>/webui/**/*.js (data-agent)
+      #   3. ext.yml containers  — panel view.js served from /ext_ui/
       # Never raises.
       private def webui_ext_script_tags
         [
           panel_agents_script,
           agent_webui_script_tags,
-          official_panel_script_tags,
           container_ext_script_tags,
         ].reject(&:empty?).join("\n")
       end
 
-      # Container extensions (ext.yml): inject each declared panel's view.js,
-      # routed through the panel→agents channel so visibility is driven by
-      # `agent.panels: [id]` references just like official panels. `scope` is
-      # already folded into the panel→agents map by `panel_agents_map`, so a
-      # panel without any referencing agent stays hidden, matching the design
-      # intent: scope = boundary, agent.panels = mount selection.
+      # Container extensions (ext.yml): inject each declared panel's view.js.
+      # Visibility is entirely driven by `agent.panels: [id]` references in
+      # profile.yml / ext.yml agents (see `panel_agents_map`). A panel that no
+      # agent references stays hidden — panels never mount themselves.
       # Served from /ext_ui/<ext_id>/<rel> with no-store so edits go live on
       # page refresh. Never raises.
       private def container_ext_script_tags
         result = Clacky::ExtensionLoader.load_all
         result.panels.map do |unit|
-          rel    = unit.spec["view"]
-          ext_id = "ext/#{unit.ext_id}/#{unit.id}"
-          src    = "/ext_ui/#{unit.ext_id}/#{rel}"
-          "<script>Clacky.ext._extBegin(#{ext_id.to_json}, #{nil.to_json}, #{unit.id.to_json})</script>" \
+          rel      = unit.spec["view"]
+          ext_id   = "ext/#{unit.ext_id}/#{unit.id}"
+          panel_id = "#{unit.ext_id}/#{unit.id}"
+          src      = "/ext_ui/#{unit.ext_id}/#{rel}"
+          "<script>Clacky.ext._extBegin(#{ext_id.to_json}, #{nil.to_json}, #{panel_id.to_json})</script>" \
             "<script src=#{src.to_json} data-ext-id=#{ext_id.to_json}></script>" \
             "<script>Clacky.ext._extEnd()</script>"
         end.join("\n")
@@ -1091,34 +1086,36 @@ module Clacky
         "<script>Clacky.ext.registerPanelAgents(#{map.to_json})</script>"
       end
 
-      # panel id => list of agent names allowed to see it. Sources:
-      #   - agent profile.yml `panels:` — official + ext-contributed profiles
-      #   - ext.yml panel `scope: global` (or unset) — visible to all agents
-      #   - ext.yml panel `scope: agent:<name>` — restricted to that agent
-      # `agent:` scope also intersects any profile-declared references so a
-      # misreferenced panel can't leak outside its boundary.
+      # panel id => list of agent names allowed to see it. Two sources merge:
+      #   1. `agent.panels: [id]` — agent-side explicit reference (opt-in mount)
+      #   2. `panel.attach: [...]` — panel-author's default suggestion
+      #        - `attach: [foo]` → visible to agent `foo`
+      #        - `attach: ["*"]` → visible to every known agent
+      #        - omitted        → hidden unless (1) references it
+      # A panel with no source stays hidden.
       private def panel_agents_map
         result = Hash.new { |h, k| h[k] = [] }
-        agent_profile_data.each do |name, data|
-          Array(data["panels"]).each { |panel| result[panel.to_s] << name unless result[panel.to_s].include?(name) }
+        add = ->(pid, agent) { result[pid] << agent unless result[pid].include?(agent) }
+
+        agent_data = agent_profile_data
+        agent_data.each do |name, data|
+          ext_id = data["_ext_id"]
+          Array(data["panels"]).each do |panel|
+            pid = panel.to_s
+            full = pid.include?("/") ? pid : (ext_id ? "#{ext_id}/#{pid}" : pid)
+            add.call(full, name)
+          end
         end
 
-        all_agents = agent_profile_data.keys
+        all_agent_ids = agent_data.keys
         Array(Clacky::ExtensionLoader.last_result&.panels).each do |unit|
-          scope = unit.spec["scope"].to_s
-          scope = "global" if scope.empty?
-
-          if scope == "global"
-            all_agents.each { |a| result[unit.id] << a unless result[unit.id].include?(a) }
-          elsif scope.start_with?("agent:")
-            allowed = scope.delete_prefix("agent:")
-            existing = result[unit.id]
-            result[unit.id] =
-              if existing.empty?
-                all_agents.include?(allowed) ? [allowed] : []
-              else
-                existing.select { |a| a == allowed }
-              end
+          full_id = "#{unit.ext_id}/#{unit.id}"
+          attach = Array(unit.spec["attach"])
+          next if attach.empty?
+          if attach.include?("*")
+            all_agent_ids.each { |a| add.call(full_id, a) }
+          else
+            attach.each { |a| add.call(full_id, a) if all_agent_ids.include?(a) }
           end
         end
         result
@@ -1135,6 +1132,7 @@ module Clacky
             "description" => unit.spec["description"],
             "panels"      => unit.spec["panels"],
             "skills"      => unit.spec["skills"],
+            "_ext_id"     => unit.ext_id,
           }
         end
         agent_profile_dirs.each do |name, dir|
@@ -1151,20 +1149,19 @@ module Clacky
         data
       end
 
-      # { agent_name => resolved_dir } across built-in and user agent dirs,
-      # user dir winning on name collision (matches AgentProfile lookup order).
+      # { agent_name => resolved_dir } for user-side agent overrides only.
+      # Extension-provided agents are served through the extension pipeline.
       private def agent_profile_dirs
         dirs = {}
-        [Clacky::AgentProfile::DEFAULT_AGENTS_DIR, Clacky::AgentProfile::USER_AGENTS_DIR].each do |root|
-          next unless Dir.exist?(root)
+        root = Clacky::AgentProfile::USER_AGENTS_DIR
+        return dirs unless Dir.exist?(root)
 
-          Dir.children(root).each do |name|
-            next if name.start_with?("_") # _panels and other non-agent dirs
-            full = File.join(root, name)
-            next unless File.directory?(full) && File.file?(File.join(full, "profile.yml"))
+        Dir.children(root).each do |name|
+          next if name.start_with?("_")
+          full = File.join(root, name)
+          next unless File.directory?(full) && File.file?(File.join(full, "profile.yml"))
 
-            dirs[name] = full
-          end
+          dirs[name] = full
         end
         dirs
       end
@@ -1177,21 +1174,6 @@ module Clacky
           next unless Dir.exist?(webui)
 
           ext_script_block(webui, "/agent_ui/#{name}", id_prefix: "agent/#{name}/", agents: [name])
-        end.reject(&:empty?).join("\n")
-      end
-
-      # Official panels: default_agents/_panels/<id>/**/*.js. Scope comes from
-      # the panel→agents map (registerPanelAgents), so a panel only mounts for
-      # agents whose profile.yml references it.
-      private def official_panel_script_tags
-        root = File.join(Clacky::AgentProfile::DEFAULT_AGENTS_DIR, "_panels")
-        return "" unless Dir.exist?(root)
-
-        Dir.children(root).sort.filter_map do |panel|
-          dir = File.join(root, panel)
-          next unless File.directory?(dir)
-
-          ext_script_block(dir, "/panel_ui/#{panel}", id_prefix: "panel/#{panel}/", panel: panel)
         end.reject(&:empty?).join("\n")
       end
 
@@ -1288,16 +1270,6 @@ module Clacky
         return (res.status = 404; res.body = "not found") unless dir && !rel.empty?
 
         serve_static_under(File.join(dir, "webui"), rel, res)
-      end
-
-      # Serve official panel assets: /panel_ui/<panel>/<rel>.
-      private def serve_panel_ui(req, res)
-        rest = req.path.delete_prefix("/panel_ui/")
-        panel, _, rel = rest.partition("/")
-        return (res.status = 404; res.body = "not found") if panel.empty? || rel.empty?
-
-        root = File.join(Clacky::AgentProfile::DEFAULT_AGENTS_DIR, "_panels", panel)
-        serve_static_under(root, rel, res)
       end
 
       # Read-only static serve of `rel` under `root`, JS/CSS/HTML only, with
@@ -4542,7 +4514,6 @@ module Clacky
       # endpoints let the Web UI read and edit those files.
 
       PROFILE_USER_AGENTS_DIR  = File.expand_path("~/.clacky/agents").freeze
-      PROFILE_DEFAULT_AGENTS_DIR = File.expand_path("../../default_agents", __dir__).freeze
       PROFILE_MAX_BYTES = 50_000  # Hard limit; prevents runaway content.
 
       # GET /api/profile
@@ -4594,31 +4565,30 @@ module Clacky
         json_response(res, 500, { ok: false, error: e.message })
       end
 
-      # Read a profile file — user override if present, else built-in default.
+      # Read a profile file — user override if present, else built-in default constant.
       # Returns { path:, content:, is_default:, writable: }.
       private def _profile_read_file(filename)
-        user_path    = File.join(PROFILE_USER_AGENTS_DIR, filename)
-        default_path = File.join(PROFILE_DEFAULT_AGENTS_DIR, filename)
+        user_path = File.join(PROFILE_USER_AGENTS_DIR, filename)
 
         if File.exist?(user_path) && !File.zero?(user_path)
-          {
+          return {
             path:       user_path,
             content:    File.read(user_path),
             is_default: false
           }
-        elsif File.exist?(default_path)
-          {
-            path:       default_path,
-            content:    File.read(default_path),
-            is_default: true
-          }
-        else
-          {
-            path:       user_path,  # Where it WILL be written
-            content:    "",
-            is_default: true
-          }
         end
+
+        default_content = case filename
+                          when "SOUL.md" then Clacky::AgentProfile::DEFAULT_SOUL
+                          when "USER.md" then Clacky::AgentProfile::DEFAULT_USER
+                          else ""
+                          end
+
+        {
+          path:       user_path,
+          content:    default_content,
+          is_default: true
+        }
       rescue StandardError => e
         { path: "", content: "", is_default: true, error: e.message }
       end

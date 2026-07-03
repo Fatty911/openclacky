@@ -16,7 +16,9 @@ module Clacky
   #     panels:
   #       - id: canvas
   #         view: panels/canvas/view.js
-  #         scope: agent:designer            # global (default) | agent:<name>
+  #         attach: [designer]               # optional: panel author's default
+  #                                          # ("*" = all agents; omit = hidden
+  #                                          # unless an agent references it)
   #     api: api/handler.rb                  # single backend for the whole ext
   #
   # Source layers (ascending priority — same id, higher layer wins):
@@ -232,17 +234,18 @@ module Clacky
           return nil
         end
 
-        scope = (spec["scope"] || "global").to_s
-        unless scope == "global" || scope.start_with?("agent:")
-          errors << Error.new(ext_id: ext_id, layer: container[:layer].to_s, unit: "panel/#{spec['id']}",
-                              message: "invalid scope #{scope.inspect} (expected `global` or `agent:<name>`)")
-          return nil
-        end
-
         Unit.new(kind: :panel, id: spec["id"].to_s, ext_id: ext_id,
                  layer: container[:layer], origin: container[:origin],
                  dir: container[:dir],
-                 spec: { "view" => spec["view"], "scope" => scope })
+                 spec: {
+                   "view"           => spec["view"],
+                   "title"          => spec["title"],
+                   "title_zh"       => spec["title_zh"],
+                   "description"    => spec["description"],
+                   "description_zh" => spec["description_zh"],
+                   "order"          => spec["order"],
+                   "attach"         => Array(spec["attach"]).map(&:to_s),
+                 })
       end
 
       private def build_api_unit(container, spec, errors)

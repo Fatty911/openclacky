@@ -35,7 +35,6 @@ RSpec.describe Clacky::ExtensionLoader do
           panels:
             - id: hello
               view: panels/hello/view.js
-              scope: global
       YAML
       make_container(local, "hello", manifest: manifest, files: {
         "panels/hello/view.js" => "// view",
@@ -50,7 +49,7 @@ RSpec.describe Clacky::ExtensionLoader do
 
       panel = result.panels.first
       expect(panel.ext_id).to eq("hello")
-      expect(panel.spec["scope"]).to eq("global")
+      expect(panel.spec["attach"]).to eq([])
 
       api = result.api.first
       expect(api.ext_id).to eq("hello")
@@ -65,7 +64,6 @@ RSpec.describe Clacky::ExtensionLoader do
           panels:
             - id: p
               view: view.js
-              scope: global
       YAML
 
       make_container(builtin, "dup", manifest: manifest, files: { "view.js" => "// builtin" })
@@ -86,7 +84,6 @@ RSpec.describe Clacky::ExtensionLoader do
           panels:
             - id: p
               view: panels/missing.js
-              scope: global
       YAML
 
       result = described_class.load_all(layers: layers)
@@ -113,38 +110,38 @@ RSpec.describe Clacky::ExtensionLoader do
       expect(result.errors.first.message).to match(/invalid origin/)
     end
 
-    it "rejects an invalid scope" do
-      make_container(local, "bad-scope", manifest: <<~YAML, files: { "view.js" => "" })
-        id: bad-scope
+    it "accepts a panel with attach: [<agent>]" do
+      make_container(local, "attach-agent", manifest: <<~YAML, files: { "view.js" => "" })
+        id: attach-agent
         origin: self
         contributes:
           panels:
             - id: p
               view: view.js
-              scope: everyone
-      YAML
-
-      result = described_class.load_all(layers: layers)
-
-      expect(result.panels).to be_empty
-      expect(result.errors.first.message).to match(/invalid scope/)
-    end
-
-    it "accepts an agent-scoped panel" do
-      make_container(local, "scoped", manifest: <<~YAML, files: { "view.js" => "" })
-        id: scoped
-        origin: self
-        contributes:
-          panels:
-            - id: p
-              view: view.js
-              scope: agent:designer
+              attach: [designer]
       YAML
 
       result = described_class.load_all(layers: layers)
 
       expect(result.errors).to be_empty
-      expect(result.panels.first.spec["scope"]).to eq("agent:designer")
+      expect(result.panels.first.spec["attach"]).to eq(["designer"])
+    end
+
+    it 'accepts a panel with attach: ["*"]' do
+      make_container(local, "attach-star", manifest: <<~YAML, files: { "view.js" => "" })
+        id: attach-star
+        origin: self
+        contributes:
+          panels:
+            - id: p
+              view: view.js
+              attach: ["*"]
+      YAML
+
+      result = described_class.load_all(layers: layers)
+
+      expect(result.errors).to be_empty
+      expect(result.panels.first.spec["attach"]).to eq(["*"])
     end
 
     it "isolates a malformed ext.yml without aborting other containers" do

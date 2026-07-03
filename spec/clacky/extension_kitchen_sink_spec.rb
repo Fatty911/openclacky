@@ -44,7 +44,6 @@ RSpec.describe "ExtensionLoader end-to-end with a kitchen-sink container" do
         panels:
           - id: dashboard
             title: Dashboard
-            scope: agent:designer
             view: panels/dashboard.js
         skills:
           - id: sample-skill

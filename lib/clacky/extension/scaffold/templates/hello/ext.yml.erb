@@ -7,4 +7,4 @@ contributes:
   panels:
     - id: hello
       view: panels/hello/view.js
-      scope: global          # global | agent:<name>
+      attach: ["*"]          # panels/agents this panel wants to attach to; "*" = all

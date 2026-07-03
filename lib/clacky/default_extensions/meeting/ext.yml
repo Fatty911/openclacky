@@ -8,6 +8,5 @@ contributes:
   panels:
     - id: meeting
       view: panels/meeting/view.js
-      scope: global
   skills:
     - id: meeting-summarizer
