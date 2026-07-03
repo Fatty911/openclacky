@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "thor"
+require "tmpdir"
 
 module Clacky
   # `clacky ext <subcommand>` — manage extension containers (ext.yml).
@@ -92,6 +93,103 @@ module Clacky
 
       result.errors.each do |e|
         puts "[ERR] #{e.ext_id} #{e.unit} — #{e.message}"
+      end
+    end
+
+    desc "pack ID", "Package a local container into a distributable zip"
+    method_option :out, type: :string, desc: "Output directory for the zip (default: current dir)"
+    def pack(id)
+      out = options[:out] || Dir.pwd
+      res = Clacky::ExtensionPackager.pack(id, out_dir: out)
+      puts "Packed #{res.ext_id} → #{res.path}"
+    rescue Clacky::ExtensionPackager::Error => e
+      warn "Error: #{e.message}"
+      exit 1
+    end
+
+    desc "install SOURCE", "Install a packed container (local zip path or http(s) URL) into the installed layer"
+    method_option :force, type: :boolean, default: false, desc: "Overwrite an already-installed extension of the same id"
+    def install(source)
+      res = Clacky::ExtensionPackager.install(source, force: options[:force])
+      puts "Installed #{res.ext_id} → #{res.path}"
+      puts "Reload the WebUI page to see any panels. No restart needed."
+    rescue Clacky::ExtensionPackager::Error => e
+      warn "Error: #{e.message}"
+      exit 1
+    end
+
+    desc "publish ID", "Pack a local container and publish it to the OpenClacky marketplace"
+    method_option :force, type: :boolean, default: false, desc: "Publish a new version of an already-published extension"
+    method_option :status, type: :string, desc: "Publish status: draft or published"
+    method_option :changelog, type: :string, desc: "Release notes for this version"
+    def publish(id)
+      brand = Clacky::BrandConfig.load
+      unless brand.activated? && brand.user_licensed?
+        warn "Error: publishing requires an activated user license. Run activation first."
+        exit 1
+      end
+
+      Dir.mktmpdir("clacky-ext-publish") do |tmp|
+        res      = Clacky::ExtensionPackager.pack(id, out_dir: tmp)
+        zip_data = File.binread(res.path)
+
+        result = brand.upload_extension!(
+          res.ext_id, zip_data,
+          force:     options[:force],
+          status:    options[:status],
+          changelog: options[:changelog]
+        )
+
+        if result[:success]
+          ext = result[:extension] || {}
+          ver = (ext["latest_version"] || {})["version"]
+          puts "Published #{res.ext_id}#{ver ? " v#{ver}" : ""} → status=#{ext["status"]}"
+        elsif result[:already_exists]
+          warn "Error: #{res.ext_id} already published. Re-run with --force to publish a new version."
+          exit 1
+        else
+          warn "Error: #{result[:error]}"
+          exit 1
+        end
+      end
+    rescue Clacky::ExtensionPackager::Error => e
+      warn "Error: #{e.message}"
+      exit 1
+    end
+
+    desc "published", "List extensions you have published to the marketplace"
+    def published
+      brand  = Clacky::BrandConfig.load
+      result = brand.fetch_my_extensions!
+
+      unless result[:success]
+        warn "Error: #{result[:error]}"
+        exit 1
+      end
+
+      extensions = result[:extensions]
+      if extensions.empty?
+        puts "You have not published any extensions yet."
+        return
+      end
+
+      extensions.each do |ext|
+        ver   = (ext["latest_version"] || {})["version"] || ext["version"]
+        units = (ext["units"] || {}).map { |k, v| "#{v} #{k}" }.join(", ")
+        puts "#{ext["name"]}  v#{ver}  [#{ext["status"]}]#{units.empty? ? "" : "  (#{units})"}"
+      end
+    end
+
+    desc "unpublish ID", "Remove one of your published extensions from the marketplace"
+    def unpublish(id)
+      brand  = Clacky::BrandConfig.load
+      result = brand.delete_extension!(id)
+
+      if result[:success]
+        puts "Unpublished #{id}."
+      else
+        warn "Error: #{result[:error]}"
+        exit 1
       end
     end
 

@@ -583,13 +583,92 @@ module Clacky
       { success: false, error: "Network error: #{e.message}" }
     end
 
-    # Fetch the public store skills list from the OpenClacky Cloud API.
-    # Requires an activated license for HMAC authentication.
-    # Passes scope: "store" to retrieve platform-wide published public skills
-    # (not filtered by the authenticated user's own skills).
-    # Returns { success: bool, skills: [], error: }.
+    # ── Extension marketplace (parallels the skill upload path above) ──
+    # Extensions authenticate with the same license-HMAC scheme as skills:
+    # a system-assigned user license proves creator identity. See platform
+    # Api::V1::Client::ExtensionsController.
+
+    # Upload (publish) a packed extension ZIP to the platform.
+    # ext_id:   extension slug (matches ext.yml id)
+    # zip_data: binary ZIP content produced by `clacky ext pack`
+    # force:    when true, PATCH an existing extension (new version) instead of POST
     #
-    # Fetch the creator's own published skills from the platform API.
+    # Returns { success: true, extension: {...} } or
+    #         { success: false, error: "...", already_exists: Boolean }.
+    def upload_extension!(ext_id, zip_data, force: false, status: nil, changelog: nil)
+      return { success: false, error: "License not activated" } unless activated?
+      return { success: false, error: "User license required to publish extensions" } unless user_licensed?
+
+      fields = client_signed_fields
+      path = if force
+               "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}"
+             else
+               "/api/v1/client/extensions"
+             end
+
+      fields["status"]    = status.to_s    if status
+      fields["changelog"] = changelog.to_s if changelog
+
+      body_bytes, boundary = build_multipart(fields, "extension_zip", "#{ext_id}.zip", zip_data)
+
+      result = if force
+                 platform_client.multipart_patch(path, body_bytes, boundary, read_timeout: 60)
+               else
+                 platform_client.multipart_post(path, body_bytes, boundary, read_timeout: 60)
+               end
+
+      if result[:success]
+        { success: true, extension: result[:data]["extension"] }
+      else
+        body   = result[:data] || {}
+        code   = body["code"] || body["error"]
+        errors = body["errors"]&.join(", ")
+        msg    = result[:error] || [code, errors].compact.join(": ")
+        msg    = "Publish failed" if msg.to_s.strip.empty?
+        already_exists = body["code"].to_s.include?("taken") ||
+                         body["code"].to_s.include?("already") ||
+                         result[:error].to_s.include?("HTTP 409")
+        { success: false, error: msg, already_exists: already_exists }
+      end
+    rescue StandardError => e
+      { success: false, error: "Network error: #{e.message}" }
+    end
+
+    # Fetch the creator's own published extensions.
+    # Uses GET /api/v1/client/extensions (HMAC-signed, system license only).
+    # Returns { success: bool, extensions: [], error: }.
+    def fetch_my_extensions!
+      return { success: false, error: "License not activated", extensions: [] } unless activated?
+      return { success: false, error: "User license required", extensions: [] } unless user_licensed?
+
+      query    = URI.encode_www_form(client_signed_fields)
+      response = platform_client.get("/api/v1/client/extensions?#{query}")
+
+      if response[:success]
+        { success: true, extensions: response[:data]["extensions"] || [] }
+      else
+        { success: false, error: response[:error] || "Fetch failed", extensions: [] }
+      end
+    end
+
+    # Soft-delete (unpublish) one of the creator's extensions by id/slug.
+    # Uses DELETE /api/v1/client/extensions/:id. Returns { success:, error: }.
+    def delete_extension!(ext_id)
+      return { success: false, error: "License not activated" } unless activated?
+      return { success: false, error: "User license required" } unless user_licensed?
+
+      query    = URI.encode_www_form(client_signed_fields)
+      path     = "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}?#{query}"
+      response = platform_client.delete(path)
+
+      if response[:success]
+        { success: true }
+      else
+        { success: false, error: response[:error] || "Delete failed" }
+      end
+    end
+
+    # Fetch the public store skills list from the OpenClacky Cloud API.
     # Uses GET /api/v1/client/skills (HMAC-signed, system license only).
     # Returns { success: bool, skills: [], error: }.
     def fetch_my_skills!
@@ -1265,6 +1344,43 @@ module Clacky
     rescue ArgumentError
       # Unparseable version strings — treat as "not older" to avoid false positives
       false
+    end
+
+    # Build the shared HMAC-signed field set for client API calls (skills,
+    # extensions). Proves creator identity via the system user license.
+    private def client_signed_fields
+      user_id   = @license_user_id.to_s
+      ts        = Time.now.utc.to_i.to_s
+      nonce     = SecureRandom.hex(16)
+      message   = "#{user_id}:#{@device_id}:#{ts}:#{nonce}"
+      {
+        "key_hash"  => Digest::SHA256.hexdigest(@license_key),
+        "user_id"   => user_id,
+        "device_id" => @device_id,
+        "timestamp" => ts,
+        "nonce"     => nonce,
+        "signature" => OpenSSL::HMAC.hexdigest("SHA256", @license_key, message)
+      }
+    end
+
+    # Assemble a binary multipart/form-data body: text fields + one file part.
+    # Kept binary-safe so null bytes in the ZIP survive. Returns [body, boundary].
+    private def build_multipart(fields, file_field, filename, file_bytes)
+      boundary = "----ClackyMultipart#{SecureRandom.hex(8)}"
+      crlf     = "\r\n"
+      parts    = []
+      fields.each do |field, value|
+        parts << "--#{boundary}#{crlf}"
+        parts << "Content-Disposition: form-data; name=\"#{field}\"#{crlf}#{crlf}"
+        parts << value.to_s
+        parts << crlf
+      end
+      parts << "--#{boundary}#{crlf}"
+      parts << "Content-Disposition: form-data; name=\"#{file_field}\"; filename=\"#{filename}\"#{crlf}"
+      parts << "Content-Type: application/zip#{crlf}#{crlf}"
+      parts << file_bytes.b
+      parts << "#{crlf}--#{boundary}--#{crlf}"
+      [parts.map(&:b).join, boundary]
     end
 
     # Instance-level delegate so fetch_brand_skills! can call version_older? directly.
