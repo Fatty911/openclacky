@@ -1,0 +1,48 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/clacky-ai/openclacky.git || echo "Remote upstream already exists."
+          git fetch upstream main
+
+      - name: Sync main branch
+        run: |
+          git checkout main
+
+          if [ "$(git rev-parse main)" = "$(git rev-parse upstream/main)" ]; then
+            echo "Already up-to-date with upstream"
+            exit 0
+          fi
+
+          if git merge-base --is-ancestor main upstream/main; then
+            echo "Fast-forward possible, merging..."
+            git merge --ff-only upstream/main
+          else
+            echo "Branches diverged, creating merge commit..."
+            git merge upstream/main --no-edit
+          fi
+
+          git push origin main
+          echo "Sync completed"
