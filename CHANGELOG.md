@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 2026-06-30
+
+### Added
+- Cron task session isolation with independent pagination and stable task count
+- Backup/restore UI in settings with WebSocket reconnect refresh and WSL open-folder support
+
+### Fixed
+- Rewrite human-readable cron parser to handle comma-separated lists, hour ranges, and `*/1` normalization
+- Setup submit button hover color follows accent theme variable
+- Settings button no longer navigates away when already on settings page
+- Use Unix epoch for old thread timestamps to avoid date parsing issues
+
 ## [1.3.5] - 2026-06-29
 
 ### Added

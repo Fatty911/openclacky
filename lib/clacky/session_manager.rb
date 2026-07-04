@@ -35,7 +35,7 @@ module Clacky
 
       # Keep only the most recent 200 sessions (best-effort, never block save)
       begin
-        cleanup_by_count(keep: 200)
+        cleanup_by_count(keep: 200, keep_cron: 200)
       rescue Exception # rubocop:disable Lint/RescueException
         # Cleanup is non-critical; swallow all errors (including AgentInterrupted)
       end
@@ -332,11 +332,15 @@ module Clacky
     # are soft-deleted (moved to the session trash, recoverable). Pinned
     # sessions are never deleted and do not count toward the cap.
     # Returns count of soft-deleted sessions.
-    def cleanup_by_count(keep:)
+    def cleanup_by_count(keep:, keep_cron: 200)
       non_pinned = all_sessions.reject { |s| s[:pinned] } # already sorted newest-first
-      return 0 if non_pinned.size <= keep
 
-      victims = non_pinned[keep..]
+      cron, regular = non_pinned.partition { |s| s[:source].to_s == "cron" }
+
+      victims = []
+      victims += regular[keep..] if regular.size > keep
+      victims += cron[keep_cron..] if cron.size > keep_cron
+
       victims.each { |session| soft_delete(session[:session_id]) }
       victims.size
     end

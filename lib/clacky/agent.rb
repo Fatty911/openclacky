@@ -51,7 +51,7 @@ module Clacky
     attr_accessor :pinned
     attr_accessor :channel_info
 
-    REASONING_EFFORTS = %w[low medium high].freeze
+    REASONING_EFFORTS = %w[low medium high xhigh].freeze
 
     def permission_mode
       @config&.permission_mode&.to_s || ""

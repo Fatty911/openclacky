@@ -739,30 +739,28 @@ module Clacky
       # ── REST API ──────────────────────────────────────────────────────────────
 
       def api_list_sessions(req, res)
-        query   = URI.decode_www_form(req.query_string.to_s).to_h
-        limit   = [query["limit"].to_i.then { |n| n > 0 ? n : 20 }, 50].min
-        before  = query["before"].to_s.strip.then  { |v| v.empty? ? nil : v }
-        q       = query["q"].to_s.strip.then       { |v| v.empty? ? nil : v }
-        q_scope = query["q_scope"].to_s.strip.then { |v| %w[name content].include?(v) ? v : "name" }
-        date    = query["date"].to_s.strip.then    { |v| v.empty? ? nil : v }
-        type    = query["type"].to_s.strip.then    { |v| v.empty? ? nil : v }
+        query        = URI.decode_www_form(req.query_string.to_s).to_h
+        limit        = [query["limit"].to_i.then { |n| n > 0 ? n : 20 }, 50].min
+        before       = query["before"].to_s.strip.then  { |v| v.empty? ? nil : v }
+        q            = query["q"].to_s.strip.then       { |v| v.empty? ? nil : v }
+        q_scope      = query["q_scope"].to_s.strip.then { |v| %w[name content].include?(v) ? v : "name" }
+        date         = query["date"].to_s.strip.then    { |v| v.empty? ? nil : v }
+        type         = query["type"].to_s.strip.then    { |v| v.empty? ? nil : v }
+        exclude_type = query["exclude_type"].to_s.strip.then { |v| v.empty? ? nil : v }
         # Backward-compat: ?source=<x> and ?profile=coding → type
         type ||= query["profile"].to_s.strip.then { |v| v.empty? ? nil : v }
         type ||= query["source"].to_s.strip.then  { |v| v.empty? ? nil : v }
 
-        # Fetch one extra NON-PINNED row to detect has_more without a separate count query.
-        # `registry.list` always returns ALL matching pinned rows first (on the
-        # first page; `before` == nil), followed by non-pinned rows up to `limit+1`.
-        # So has_more is determined by whether the non-pinned section overflowed.
-        sessions = @registry.list(limit: limit + 1, before: before, q: q, q_scope: q_scope, date: date, type: type)
+        sessions = @registry.list(limit: limit + 1, before: before, q: q, q_scope: q_scope, date: date, type: type, exclude_type: exclude_type)
 
-        # Split pinned vs non-pinned to apply has_more only to the non-pinned tail.
         pinned_part, non_pinned_part = sessions.partition { |s| s[:pinned] }
         has_more = non_pinned_part.size > limit
         non_pinned_part = non_pinned_part.first(limit)
         sessions = pinned_part + non_pinned_part
 
-        json_response(res, 200, { sessions: sessions, has_more: has_more, cron_count: @registry.cron_count })
+        stats = @registry.cron_stats
+        json_response(res, 200, { sessions: sessions, has_more: has_more,
+                                  cron_count: stats[:count], latest_cron_updated_at: stats[:latest_updated_at] })
       end
 
       # GET /api/sessions/:id — fetch a single session by id (memory + disk merged).
@@ -4356,7 +4354,8 @@ module Clacky
             total_tasks: s.dig(:stats, :total_tasks) || 0,
             file_size:   s[:file_size] || 0,
             model:       s[:model],
-            working_dir: s[:working_dir]
+            working_dir: s[:working_dir],
+            source:      s[:source]
           }
         end
 
@@ -5388,7 +5387,7 @@ module Clacky
       end
 
       # PATCH /api/sessions/:id/reasoning_effort
-      # Body: { "reasoning_effort": "off" | "low" | "medium" | "high" }
+      # Body: { "reasoning_effort": "off" | "low" | "medium" | "high" | "xhigh" }
       def api_switch_session_reasoning_effort(session_id, req, res)
         body = parse_json_body(req)
         raw = body["reasoning_effort"]
@@ -5787,12 +5786,12 @@ module Clacky
           interrupt_session(session_id)
 
         when "list_sessions"
-          # Initial load: newest 20 sessions regardless of source/profile.
-          # Single unified query — frontend shows all in one time-sorted list.
-          page = @registry.list(limit: 21)
+          stats = @registry.cron_stats
+          page = @registry.list(limit: 21, exclude_type: "cron")
           has_more = page.size > 20
           all_sessions = page.first(20)
-          conn.send_json(type: "session_list", sessions: all_sessions, has_more: has_more, cron_count: @registry.cron_count)
+          conn.send_json(type: "session_list", sessions: all_sessions, has_more: has_more,
+                         cron_count: stats[:count], latest_cron_updated_at: stats[:latest_updated_at])
 
         when "run_task"
           # Client sends this after subscribing to guarantee it's ready to receive

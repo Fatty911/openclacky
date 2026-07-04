@@ -196,7 +196,7 @@ module Clacky
       #   [ ...all_pinned_matching (newest-first), ...non_pinned (newest-first, limited) ]
       #
       # source and profile are orthogonal — either can be nil independently.
-      def list(limit: nil, before: nil, q: nil, q_scope: "name", date: nil, type: nil, include_pinned: true)
+      def list(limit: nil, before: nil, q: nil, q_scope: "name", date: nil, type: nil, exclude_type: nil, include_pinned: true)
         return [] unless @session_manager
 
         live = @mutex.synchronize do
@@ -229,6 +229,12 @@ module Clacky
           else
             all = all.select { |s| s_source(s) == type && (s[:agent_profile] || "general").to_s != "coding" }
           end
+        end
+
+        # ── exclude_type filter ───────────────────────────────────────────────
+        if exclude_type
+          excluded = Array(exclude_type)
+          all = all.reject { |s| excluded.include?(s_source(s)) }
         end
 
         # ── date filter (YYYY-MM-DD, matches created_at prefix) ──────────────
@@ -382,6 +388,14 @@ module Clacky
       def cron_count
         return 0 unless @session_manager
         @session_manager.all_sessions.count { |s| s_source(s) == "cron" }
+      end
+
+      # Count + latest updated_at for cron sessions (used by sidebar virtual entry).
+      def cron_stats
+        return { count: 0, latest_updated_at: nil } unless @session_manager
+        cron_all = @session_manager.all_sessions.select { |s| s_source(s) == "cron" }
+        latest = cron_all.map { |s| s[:updated_at] || s[:created_at] }.compact.max
+        { count: cron_all.size, latest_updated_at: latest }
       end
 
       # Delete a session from registry (and interrupt its thread).
