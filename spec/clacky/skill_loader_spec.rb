@@ -405,4 +405,100 @@ RSpec.describe Clacky::SkillLoader do
       expect(identifiers).not_to include("paid-demo")
     end
   end
+
+  describe "extension skills (contributes.skills)" do
+    let(:ext_local) { Dir.mktmpdir }
+
+    after do
+      FileUtils.rm_rf(ext_local) if Dir.exist?(ext_local)
+    end
+
+    def make_ext_container(id, files: {}, manifest:)
+      dir = File.join(ext_local, id)
+      FileUtils.mkdir_p(dir)
+      File.write(File.join(dir, "ext.yml"), manifest)
+      files.each do |rel, content|
+        path = File.join(dir, rel)
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, content)
+      end
+      dir
+    end
+
+    def reload_extension_loader
+      Clacky::ExtensionLoader.load_all(layers: {
+        builtin:   nil,
+        installed: nil,
+        local:     ext_local,
+      })
+    end
+
+    it "loads plain skills declared in ext.yml" do
+      make_ext_container("triage-pack",
+        files: { "skills/triage/SKILL.md" => "---\nname: triage\ndescription: Triage incidents\n---\nbody" },
+        manifest: <<~YAML,
+          id: triage-pack
+          origin: self
+          contributes:
+            skills:
+              - id: triage
+        YAML
+      )
+      reload_extension_loader
+
+      loader = described_class.new(working_dir: working_dir, brand_config: nil)
+
+      expect(loader.all_skills.map(&:identifier)).to include("triage")
+    end
+
+    it "skips protected (encrypted) skill units — leaves them to the brand chain" do
+      make_ext_container("paid-pack",
+        files: { "skills/closed/SKILL.md.enc" => "encrypted-bytes" },
+        manifest: <<~YAML,
+          id: paid-pack
+          origin: marketplace
+          contributes:
+            skills:
+              - id: closed
+        YAML
+      )
+      reload_extension_loader
+
+      loader = described_class.new(working_dir: working_dir, brand_config: nil)
+
+      expect(loader.all_skills.map(&:identifier)).not_to include("closed")
+    end
+
+    it "lets a global_clacky skill shadow the same-id extension skill" do
+      make_ext_container("dup-pack",
+        files: { "skills/dup/SKILL.md" => "---\nname: dup\ndescription: from extension\n---\next-body" },
+        manifest: <<~YAML,
+          id: dup-pack
+          origin: self
+          contributes:
+            skills:
+              - id: dup
+        YAML
+      )
+      reload_extension_loader
+
+      home_dir = Dir.mktmpdir
+      global_skill_dir = File.join(home_dir, ".clacky", "skills", "dup")
+      FileUtils.mkdir_p(global_skill_dir)
+      File.write(File.join(global_skill_dir, "SKILL.md"),
+                 "---\nname: dup\ndescription: from global\n---\nglobal-body")
+
+      begin
+        original_home = ENV["HOME"]
+        ENV["HOME"] = home_dir
+        loader = described_class.new(working_dir: working_dir, brand_config: nil)
+        skill = loader.all_skills.find { |s| s.identifier == "dup" }
+        expect(skill).not_to be_nil
+        expect(skill.description).to eq("from global")
+      ensure
+        ENV["HOME"] = original_home
+        FileUtils.rm_rf(home_dir)
+      end
+    end
+  end
 end

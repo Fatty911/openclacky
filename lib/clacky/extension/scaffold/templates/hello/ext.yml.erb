@@ -1,0 +1,12 @@
+id: <%= slug %>
+name: <%= slug %>
+description: (describe what this extension does)
+version: "0.1.0"
+author: (your name)               # shown as the credit on the New Session card
+origin: self
+contributes:
+  api: api/handler.rb
+  panels:
+    - id: hello
+      view: panels/hello/view.js
+      attach: ["*"]          # panels/agents this panel wants to attach to; "*" = all

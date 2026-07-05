@@ -1,0 +1,18 @@
+id: general
+name: General
+description: General-purpose digital employee agent
+version: "0.1.0"
+author: OpenClacky
+homepage: https://www.openclacky.com
+license: MIT
+origin: self
+contributes:
+  agents:
+    - id: general
+      title: General
+      title_zh: 通用
+      description: A versatile digital employee living on your computer
+      description_zh: 驻留在你电脑里的多面手数字员工
+      order: 1
+      prompt: agents/general/system_prompt.md
+      panels: [meeting/meeting]

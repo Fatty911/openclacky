@@ -22,8 +22,22 @@ end
 
 RSpec.describe Clacky::PatchLoader do
   let(:tmp) { Dir.mktmpdir }
+  let(:empty_ext_result) do
+    Clacky::ExtensionLoader::Result.new(
+      panels: [], api: [], skills: [], agents: [], channels: [], patches: [], hooks: [],
+      errors: [], overridden: [], containers: {}
+    )
+  end
 
-  after { FileUtils.remove_entry(tmp) }
+  before do
+    @prev_ext_result = Clacky::ExtensionLoader.instance_variable_get(:@last_result)
+    Clacky::ExtensionLoader.instance_variable_set(:@last_result, empty_ext_result)
+  end
+
+  after do
+    FileUtils.remove_entry(tmp)
+    Clacky::ExtensionLoader.instance_variable_set(:@last_result, @prev_ext_result)
+  end
 
   def make_patch(id, meta:, patch_rb:)
     dir = File.join(tmp, id)

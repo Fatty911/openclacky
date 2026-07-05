@@ -6,35 +6,108 @@ module Clacky
   # Loads and represents an agent profile (system prompt + skill whitelist).
   #
   # Lookup order for a profile named "coding":
-  #   1. ~/.clacky/agents/coding/          (user override)
-  #   2. <gem>/lib/clacky/default_agents/coding/  (built-in default)
+  #   1. ~/.clacky/agents/coding/                (user override, physical dir)
+  #   2. extension agent unit with id == "coding" (ext.yml contributes.agents)
   #
-  # Each profile directory must contain:
+  # Each user profile directory (opt-in override) contains:
   #   - profile.yml       — name, description, skills whitelist
   #   - system_prompt.md  — agent-specific system prompt content
   #
-  # Global files (shared across all agents), also with user-override support:
-  #   - SOUL.md   — agent personality/values
-  #   - USER.md   — user profile information
-  #   - base_prompt.md — universal behavioral rules (todo manager, tool usage, etc.)
+  # Global files (shared across all agents) are user-only overrides:
+  #   - ~/.clacky/agents/SOUL.md   — agent personality/values (else DEFAULT_SOUL)
+  #   - ~/.clacky/agents/USER.md   — user profile info        (else DEFAULT_USER)
+  # The universal behavioural rules (todo manager, tool usage, response style,
+  # etc.) live in a bundled resource file at lib/clacky/prompts/base.md.
   class AgentProfile
-    DEFAULT_AGENTS_DIR = File.expand_path("../default_agents", __FILE__).freeze
     USER_AGENTS_DIR = File.expand_path("~/.clacky/agents").freeze
+    BASE_PROMPT_PATH = File.expand_path("../prompts/base.md", __FILE__).freeze
+
+    DEFAULT_SOUL = <<~MD.freeze
+      You are calm, precise, and helpful. You communicate clearly and concisely.
+      You are honest about uncertainty and ask for clarification when needed.
+      You take initiative but respect the user's preferences and decisions.
+    MD
+
+    DEFAULT_USER = "(No user profile configured yet. To personalize, create ~/.clacky/agents/USER.md)"
 
     attr_reader :name, :description
 
     def initialize(name)
       @name = name.to_s
+      result = ExtensionLoader.last_result
+      @ext_unit = result&.agents&.find { |u| u.id == @name }
+      if @ext_unit.nil?
+        result = ExtensionLoader.load_all(force: true)
+        @ext_unit = result&.agents&.find { |u| u.id == @name }
+      end
       profile_data = load_profile_yml
       @description = profile_data["description"] || ""
       @system_prompt_content = load_agent_file("system_prompt.md")
     end
 
-    # Load a named profile. Raises ArgumentError if profile directory not found.
     # @param name [String, Symbol] profile name (e.g. "coding", "general")
     # @return [AgentProfile]
     def self.load(name)
       new(name)
+    end
+
+    # List all available agent profiles across user + extension layers.
+    # Precedence on id collision: user override → extension unit.
+    # @return [Array<Hash>] each: { id:, title:, title_zh:, description:, description_zh:, source:, order:, layer:, author: }
+    def self.all
+      out = {}
+
+      add = lambda do |id, title, title_zh, description, description_zh, source, order, layer, author|
+        next if id.nil? || id.empty?
+        out[id] = {
+          id: id,
+          title: title,
+          title_zh: title_zh,
+          description: description,
+          description_zh: description_zh,
+          source: source,
+          order: order,
+          layer: layer,
+          author: author,
+        }
+      end
+
+      ext_result = ExtensionLoader.last_result || ExtensionLoader.load_all
+      ext_result&.agents&.each do |unit|
+        spec = unit.spec || {}
+        title = spec["title"].to_s
+        title = unit.id if title.empty?
+        add.call(
+          unit.id, title, spec["title_zh"].to_s,
+          spec["description"].to_s, spec["description_zh"].to_s,
+          "extension", spec["order"], unit.layer.to_s,
+          spec["author"].to_s
+        )
+      end
+
+      Dir.glob(File.join(USER_AGENTS_DIR, "*")).sort.each do |path|
+        next unless File.directory?(path)
+        id = File.basename(path)
+        next if id.start_with?("_")
+        next unless File.file?(File.join(path, "profile.yml"))
+        meta = read_profile_yml(File.join(path, "profile.yml"))
+        add.call(
+          id, meta["title"] || meta["name"] || id, meta["title_zh"].to_s,
+          meta["description"].to_s, meta["description_zh"].to_s,
+          "user", meta["order"], "user",
+          meta["author"].to_s.empty? ? "You" : meta["author"].to_s
+        )
+      end
+
+      source_rank = { "user" => 0, "extension" => 1 }
+      out.values.sort_by { |a| [source_rank[a[:source]] || 9, a[:order] || 999, a[:id]] }
+    end
+
+    private_class_method def self.read_profile_yml(path)
+      return {} unless File.file?(path)
+      YAML.safe_load(File.read(path)) || {}
+    rescue StandardError
+      {}
     end
 
     # @return [String] agent-specific system prompt content
@@ -42,71 +115,66 @@ module Clacky
       @system_prompt_content
     end
 
-    # @return [String] base prompt shared by all agents
+    # @return [String] base prompt shared by all agents (bundled resource)
     def base_prompt
-      load_global_file("base_prompt.md")
+      return "" unless File.file?(BASE_PROMPT_PATH)
+      File.read(BASE_PROMPT_PATH).strip
     end
 
-    # @return [String] soul content (user override → built-in default)
+    # @return [String] soul content (user override, else default)
     def soul
-      load_global_file("SOUL.md")
+      user_path = File.join(USER_AGENTS_DIR, "SOUL.md")
+      if File.exist?(user_path) && !File.zero?(user_path)
+        File.read(user_path).strip
+      else
+        DEFAULT_SOUL.strip
+      end
     end
 
-    # @return [String] user profile content (user override → built-in default)
+    # @return [String] user profile content (user override, else default)
     def user_profile
-      load_global_file("USER.md")
+      user_path = File.join(USER_AGENTS_DIR, "USER.md")
+      if File.exist?(user_path) && !File.zero?(user_path)
+        File.read(user_path).strip
+      else
+        DEFAULT_USER
+      end
     end
 
     private def load_profile_yml
-      path = find_agent_file("profile.yml")
-      raise ArgumentError, "Agent profile '#{@name}' not found. " \
-        "Looked in #{user_agent_dir} and #{default_agent_dir}" unless path
-
-      YAML.safe_load(File.read(path)) || {}
-    end
-
-    # Load a file from the agent-specific directory (user override → built-in)
-    private def load_agent_file(filename)
-      path = find_agent_file(filename)
-      return "" unless path
-
-      File.read(path).strip
-    end
-
-    # Load a global file shared across all agents (user override → built-in)
-    private def load_global_file(filename)
-      user_path = File.join(USER_AGENTS_DIR, filename)
-      default_path = File.join(DEFAULT_AGENTS_DIR, filename)
-
-      path = if File.exist?(user_path) && !File.zero?(user_path)
-               user_path
-             elsif File.exist?(default_path)
-               default_path
-             end
-
-      return "" unless path
-
-      File.read(path).strip
-    end
-
-    # Find a file in user override dir first, then built-in default dir
-    private def find_agent_file(filename)
-      user_path = File.join(user_agent_dir, filename)
-      default_path = File.join(default_agent_dir, filename)
-
-      if File.exist?(user_path) && !File.zero?(user_path)
-        user_path
-      elsif File.exist?(default_path)
-        default_path
+      user_yml = File.join(user_agent_dir, "profile.yml")
+      if File.file?(user_yml)
+        return YAML.safe_load(File.read(user_yml)) || {}
       end
+
+      if @ext_unit
+        return {
+          "name"        => @name,
+          "description" => @ext_unit.spec["description"],
+          "panels"      => @ext_unit.spec["panels"],
+          "skills"      => @ext_unit.spec["skills"],
+        }
+      end
+
+      raise ArgumentError, "Agent profile '#{@name}' not found. " \
+        "Looked in #{user_agent_dir} and extension registry."
+    end
+
+    # Agent-specific file lookup: user override → extension prompt (system_prompt.md only).
+    private def load_agent_file(filename)
+      user_path = File.join(user_agent_dir, filename)
+      return File.read(user_path).strip if File.exist?(user_path) && !File.zero?(user_path)
+
+      if @ext_unit && filename == "system_prompt.md"
+        prompt_abs = @ext_unit.spec["prompt_abs"]
+        return File.read(prompt_abs).strip if prompt_abs && File.file?(prompt_abs)
+      end
+
+      ""
     end
 
     private def user_agent_dir
       File.join(USER_AGENTS_DIR, @name)
-    end
-
-    private def default_agent_dir
-      File.join(DEFAULT_AGENTS_DIR, @name)
     end
   end
 end

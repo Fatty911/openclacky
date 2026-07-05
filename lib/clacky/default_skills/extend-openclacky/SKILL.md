@@ -5,37 +5,102 @@ description: Customize, fix, override or extend openclacky itself — change a b
 
 # Extending Openclacky
 
-Openclacky ships four official extension mechanisms that survive `gem update` and never require editing the gem source.
-**Never tell the user to `bundle show openclacky` and edit the gem — always use one of these.**
+Openclacky ships one unified extension mechanism — an **extension container**
+declared by a single `ext.yml`. It survives `gem update` and never requires
+editing the gem source.
 
-## Pick the right mechanism
+**Never tell the user to `bundle show openclacky` and edit the gem.**
 
-| User wants to… | Use | Scaffold | Verify |
-|---|---|---|---|
-| Change behavior of an **existing method** in openclacky (e.g. `WebSearch#execute` timeout, fix a bug in a built-in tool) | **Patch** | `clacky patch_new <id> "Const#method" -d "<desc>"` | `clacky patch_verify` |
-| **Audit / block / observe** tool calls (block `rm -rf /`, log every shell command) — no Ruby needed | **Shell Hook** | `clacky hook_new <id> -e <event>` | `clacky hook_verify` |
-| Plug openclacky into a **new IM platform** (Slack, in-house IM, custom webhook…) | **Channel Adapter** | `clacky channel_new <platform_id>` | `clacky channel_verify` |
-| Add UI to the **Web UI** (custom panel, header button, settings tab, visualize data) | **Web UI Extension** | drop a `.js` file in `~/.clacky/webui_ext/` | reload page; `Clacky.ext.slots()` in console; `?pure=true` to escape |
+## The one entry point
+
+Every extension lives in a container directory:
+
+```
+~/.clacky/ext/local/<id>/
+  ext.yml         # single manifest — declares everything the container contributes
+  panels/…        # WebUI panels (JS)
+  api/handler.rb  # HTTP API backend
+  skills/…        # AI skills
+  agents/…        # agent profiles + prompts
+  channels/…      # IM adapters
+  patches/…       # runtime method patches
+  hooks/…         # shell hooks
+```
+
+Scaffold with:
+```bash
+clacky ext new <id>            # minimal hello-panel starter
+clacky ext new <id> --full     # kitchen-sink example with every contributes type
+```
+
+The ext.yml `contributes:` map declares which of these 7 types the container
+provides. A container may use one, several, or all.
+
+## Pick what to add to `contributes:`
+
+| User wants to… | contributes: field |
+|---|---|
+| Add a **WebUI panel / button / settings tab / data visualisation** | `panels:` |
+| Add an **HTTP API backend** (routes under `/api/ext/<id>/…`) | `api:` (a single `handler.rb`) |
+| **Change behavior of a built-in method** in openclacky (e.g. `WebSearch#execute` timeout) | `patches:` |
+| **Audit / block / observe** tool calls (block `rm -rf /`, log every shell command) | `hooks:` |
+| Plug openclacky into a **new IM platform** (Slack, in-house IM, custom webhook) | `channels:` |
+| Add a **new AI skill** (SKILL.md) | `skills:` |
+| Bundle a **custom agent profile** with its own panels + skills | `agents:` |
 
 ## Authoritative documentation
 
-Each mechanism has a full reference doc — read the relevant one with `web_fetch` before writing code:
+Read the relevant reference doc with `web_fetch` before writing code —
+don't guess field names, hook events, adapter methods, or the `Clacky.ext`
+WebUI contract.
 
+- Extension containers (ext.yml overview) → https://www.openclacky.com/docs/extend
+- Panels (WebUI) → https://www.openclacky.com/docs/extend-webui
+- API backends → https://www.openclacky.com/docs/extend-api
 - Patches → https://www.openclacky.com/docs/extend-patches
 - Shell Hooks → https://www.openclacky.com/docs/extend-shell-hooks
 - Channel Adapters → https://www.openclacky.com/docs/extend-channel-adapter
-- Web UI Extensions → https://www.openclacky.com/docs/extend-webui
+
+## WebUI host services live under `Clacky.*`
+
+The single public API surface for WebUI extensions is `window.Clacky`.
+All host services are exposed as properties on it — reach for them there,
+not through bare globals or `window.Xxx`:
+
+```js
+Clacky.Sessions.on("switched", handler);   // active session store
+Clacky.Router.go("session");                // top-level view routing
+Clacky.I18n.t("some.key");                  // translations
+Clacky.Modal.confirm("Delete?");            // dialogs
+Clacky.Notify.info("Saved");                // toasts
+Clacky.Auth.passed;                          // auth state
+Clacky.Workspace.list(dir);                 // working-directory files
+Clacky.Skills.list();                       // skill catalog
+Clacky.Backup.load();                       // backup/restore state
+Clacky.WS.send({ type: "..." });            // send a WebSocket message to the agent
+```
+
+Rules:
+
+- Prefer `Clacky.Xxx.method(...)` — this is the recommended, forward-stable form.
+- `window.Clacky.Xxx.method(...)` works too and is fine in defensive code.
+- **Never** write `window.Sessions` / `typeof window.Sessions` / `"Sessions" in window`
+  — bare host names are `const` bindings, not `window` properties, so those checks
+  return `undefined` / `false` even though the module is loaded.
+- The bare form (`Sessions.on(...)`) still works for backwards compatibility
+  but is not the pattern to teach or generate.
 
 ## Execution playbook
 
-1. **Identify** which mechanism fits (use the table above; ask if genuinely ambiguous).
-2. **Read the doc** for that mechanism with `web_fetch`. Don't guess fields, hook events, or required methods — the doc is the contract.
-3. **Run the scaffold** CLI command. It generates the file(s) in `~/.clacky/...` with correct meta. *(Web UI Extensions have no scaffold — just create a `.js` file under `~/.clacky/webui_ext/`; the doc shows the `Clacky.ext` contract.)*
-4. **Edit** the generated file to implement the user's intent. Keep generated meta fields (`target`, `event`, `platform_id`, the `Clacky::ChannelRegistry.register(...)` line, etc.) intact unless the doc says otherwise.
-5. **Verify** with the matching `*_verify` command. Surface any `[FAIL]` lines to the user verbatim. *(Web UI Extensions have no verify command — reload the page and confirm the slot rendered; if anything breaks, `?pure=true` disables all extensions instantly.)*
+1. **Identify** which `contributes:` fields the user's intent needs (use the table above; ask if genuinely ambiguous).
+2. **Read the doc(s)** for those fields. The doc is the contract.
+3. **Scaffold** with `clacky ext new <id>` (or `--full` if the user wants every type wired up as a reference).
+4. **Edit** `ext.yml` to declare the fields, and fill in the referenced files (panel view.js, api handler.rb, patches/xxx.rb, etc.).
+5. **Verify** with `clacky ext verify`. Surface any error/skip lines to the user verbatim.
+6. **Reload** the WebUI page (for panel/api changes take effect on next request — no restart needed).
 
 ## When NOT to use this skill
 
-- The user is building features in their own application that just *use* openclacky — that's normal coding, no patch/hook/channel needed.
-- The user wants a brand-new tool/skill for *their* project — use `.clacky/skills/` or `.clacky/tools/`, not these gem-level mechanisms.
+- The user is building features in their own application that just *use* openclacky — that's normal coding, no extension container needed.
+- The user wants a brand-new tool/skill for *their* project — use `.clacky/skills/` or `.clacky/tools/` in their project, not a gem-level container.
 - The change can be made via `clacky config set ...` — prefer config over patches.

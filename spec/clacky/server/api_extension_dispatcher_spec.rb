@@ -7,23 +7,21 @@ require "stringio"
 RSpec.describe Clacky::Server::ApiExtensionDispatcher do
   before { Clacky::ApiExtension.reset_registry! }
 
-  # Fake req/res that look enough like WEBrick objects for the dispatcher.
   let(:res) { WEBrick::HTTPResponse.new(WEBrick::Config::HTTP) }
 
   def make_req(method, path, body: nil)
-    req = double("req",
+    double("req",
       path: path,
       request_method: method,
       body: body,
       query: {})
-    req
   end
 
-  def register_ext(id, klass)
-    klass.ext_id = id
+  def register_ext(ext_id, klass)
+    klass.ext_id = ext_id
     klass.ext_dir = Dir.mktmpdir
     klass.meta = {}
-    Clacky::ApiExtension.register(id, klass)
+    Clacky::ApiExtension.register(ext_id, klass)
   end
 
   describe ".handle" do

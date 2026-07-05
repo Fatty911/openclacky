@@ -5,41 +5,53 @@ require "spec_helper"
 RSpec.describe "ApiExtensionLoader built-in extensions" do
   before { Clacky::ApiExtension.reset_registry! }
 
-  describe ".load_all loads from BUILTIN_DIR" do
-    it "loads the meeting extension from default_extensions" do
-      # Use an empty user dir so only built-in extensions load
-      empty_dir = Dir.mktmpdir
-      begin
-        result = Clacky::ApiExtensionLoader.load_all(dir: empty_dir)
-        expect(result.loaded).to include("meeting")
-        expect(Clacky::ApiExtension.registry["meeting"]).not_to be_nil
-      ensure
-        FileUtils.remove_entry(empty_dir)
+  it "loads the meeting extension from default_extensions" do
+    empty_dir = Dir.mktmpdir
+    begin
+      allow(Clacky::ExtensionLoader).to receive(:load_all).and_wrap_original do |m, **kwargs|
+        default_layers = Clacky::ExtensionLoader.default_layers
+        m.call(**kwargs.merge(layers: default_layers.merge(local: empty_dir), force: true))
       end
+      result = Clacky::ApiExtensionLoader.load_all
+      expect(result.loaded).to include("meeting")
+      expect(Clacky::ApiExtension.registry["meeting"]).not_to be_nil
+    ensure
+      FileUtils.remove_entry(empty_dir)
     end
+  end
 
-    it "user extension with same id overwrites built-in" do
-      user_dir = Dir.mktmpdir
-      begin
-        # Create a user extension named "meeting" that shadows the built-in
-        ext_dir = File.join(user_dir, "meeting")
-        FileUtils.mkdir_p(ext_dir)
-        File.write(File.join(ext_dir, "handler.rb"), <<~RUBY)
-          class UserMeetingOverrideExt < Clacky::ApiExtension
-            get "/custom" do
-              json(source: "user")
-            end
+  it "user extension with same id overrides built-in" do
+    user_dir = Dir.mktmpdir
+    begin
+      ext_dir = File.join(user_dir, "meeting")
+      FileUtils.mkdir_p(File.join(ext_dir, "api"))
+      File.write(File.join(ext_dir, "ext.yml"), <<~YAML)
+        id: meeting
+        name: meeting
+        version: "0.0.1"
+        origin: self
+        contributes:
+          api: api/handler.rb
+      YAML
+      File.write(File.join(ext_dir, "api/handler.rb"), <<~RUBY)
+        class UserMeetingOverrideExt < Clacky::ApiExtension
+          get "/custom" do
+            json(source: "user")
           end
-        RUBY
+        end
+      RUBY
 
-        result = Clacky::ApiExtensionLoader.load_all(dir: user_dir)
-        expect(result.loaded).to include("meeting")
-
-        klass = Clacky::ApiExtension.registry["meeting"]
-        expect(klass.routes.any? { |r| r.pattern == "/custom" }).to be true
-      ensure
-        FileUtils.remove_entry(user_dir)
+      allow(Clacky::ExtensionLoader).to receive(:load_all).and_wrap_original do |m, **kwargs|
+        default_layers = Clacky::ExtensionLoader.default_layers
+        m.call(**kwargs.merge(layers: default_layers.merge(local: user_dir), force: true))
       end
+      result = Clacky::ApiExtensionLoader.load_all
+      expect(result.loaded).to include("meeting")
+
+      klass = Clacky::ApiExtension.registry["meeting"]
+      expect(klass.routes.any? { |r| r.pattern == "/custom" }).to be true
+    ensure
+      FileUtils.remove_entry(user_dir)
     end
   end
 end

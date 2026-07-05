@@ -7,6 +7,7 @@ require_relative "ui2"
 require_relative "json_ui_controller"
 require_relative "plain_ui_controller"
 require_relative "brand_config"
+require_relative "extension/cli_commands"
 
 module Clacky
   class CLI < Thor
@@ -1121,7 +1122,7 @@ module Clacky
     LONGDESC
     option :desc, type: :string, aliases: "-d", default: "", desc: "Short description"
     def patch_new(id, target)
-      require_relative "patch_loader"
+      require_relative "extension/patch_loader"
       path = Clacky::PatchLoader.scaffold(id, target, description: options[:desc])
       puts "Created patch: #{path}"
       puts "Edit patch.rb, then run: clacky patch_verify"
@@ -1213,62 +1214,8 @@ module Clacky
       exit 1 if result.skipped.any?
     end
 
-    desc "api_ext_new NAME", "Scaffold a custom HTTP API extension at ~/.clacky/api_ext/NAME/"
-    long_desc <<-LONGDESC
-      Generate a ready-to-edit HTTP API extension skeleton. The skeleton mounts
-      a sample route under /api/ext/NAME/ — fill in your routes, then verify with
-      `clacky api_ext_verify`.
-
-      Examples:
-        $ clacky api_ext_new my-dashboard
-    LONGDESC
-    def api_ext_new(name)
-      path = Clacky::ApiExtensionLoader.scaffold(name)
-      puts "Created api extension: #{path}"
-      puts "Edit the routes, then run: clacky api_ext_verify"
-    rescue ArgumentError => e
-      warn "Error: #{e.message}"
-      exit 1
-    end
-
-    desc "api_ext_verify", "Load user API extensions and report which are valid"
-    def api_ext_verify
-      result = Clacky::ApiExtensionLoader.load_all
-
-      if result.loaded.empty? && result.skipped.empty?
-        puts "No api extensions found in ~/.clacky/api_ext/"
-        return
-      end
-
-      result.loaded.each do |id|
-        klass = Clacky::ApiExtension.registry[id]
-        public_count = klass.public_paths.size
-        suffix = public_count > 0 ? " (#{public_count} public)" : ""
-        puts "[OK]   #{id} — #{klass.routes.size} route(s)#{suffix}"
-      end
-      result.skipped.each { |(n, reason)| puts "[SKIP] #{n} — #{reason}" }
-      exit 1 if result.skipped.any?
-    end
-
-    desc "api_ext_list", "List loaded API extensions and their routes"
-    def api_ext_list
-      Clacky::ApiExtensionLoader.load_all if Clacky::ApiExtension.registry.empty?
-
-      if Clacky::ApiExtension.registry.empty?
-        puts "No api extensions loaded."
-        return
-      end
-
-      Clacky::ApiExtension.registry.each do |id, klass|
-        public_tag = klass.public_paths.any? ? " (public)" : ""
-        puts "#{id}#{public_tag}"
-        klass.routes.each do |route|
-          full_path = "/api/ext/#{id}#{route.pattern}".chomp("/")
-          full_path = "/api/ext/#{id}/" if full_path == "/api/ext/#{id}"
-          puts "  #{route.method.to_s.upcase.ljust(6)} #{full_path}"
-        end
-      end
-    end
+    desc "ext SUBCOMMAND", "Manage extension containers (new, verify, list, pack, install, publish, search)"
+    subcommand "ext", Clacky::CliExtensionCommands
 
     desc "billing", "Show billing summary and usage statistics"
     long_desc <<-LONGDESC

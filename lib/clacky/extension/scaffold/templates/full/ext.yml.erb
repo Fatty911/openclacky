@@ -1,0 +1,41 @@
+id: <%= slug %>
+name: <%= slug %>
+description: Kitchen-sink reference container — exercises all 7 contributes types.
+version: "0.1.0"
+author: (your name)               # shown as the credit on the New Session card
+origin: self
+contributes:
+  api: api/handler.rb              # single mount at /api/ext/<%= slug %>/
+  panels:
+    - id: dashboard
+      title: Dashboard
+      view: panels/dashboard/view.js
+      # No `attach:` — visibility is driven by the `designer` agent below,
+      # which references it via `panels: [dashboard]`. Set
+      # `attach: [<agent-id>]` (or `["*"]`) if you want the panel author to
+      # suggest a default mount without requiring agent-side references.
+  skills:
+    - id: <%= slug %>-skill        # SKILL.md under skills/<%= slug %>-skill/
+  agents:
+    - id: designer
+      title: Designer
+      title_zh: 设计师
+      description: A demo agent that owns the dashboard panel and the <%= slug %>-skill skill.
+      description_zh: 这是一个演示 agent，绑定 dashboard 面板和 <%= slug %>-skill 技能。
+      prompt: agents/designer.md
+      panels: [dashboard]
+      skills: [<%= slug %>-skill]
+  channels:
+    - id: noop
+      adapter: channels/noop.rb
+  patches:
+    # Patches monkey-patch real classes. The example target is a
+    # real, live method — Terminal#execute is called for every
+    # shell tool invocation. Omit `fingerprint:` to trust the patch
+    # (loader will require the file directly); provide one to have
+    # the loader disable/warn if upstream source drifts.
+    - target: "Clacky::Tools::Terminal#execute"
+      file: patches/audit.rb
+  hooks:
+    - event: before_tool_use
+      file: hooks/audit.rb

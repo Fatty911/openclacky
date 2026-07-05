@@ -136,6 +136,8 @@ module Clacky
       # Free-mode counterpart: branded but not activated → fetch unencrypted skills
       # via the public endpoint so users get a working install with no serial number.
       @brand_config.sync_free_skills_async!
+      # Brand extensions bundled into the activated license's distribution.
+      @brand_config.sync_brand_extensions_async!
 
       # Initialize Time Machine
       init_time_machine
@@ -145,6 +147,11 @@ module Clacky
 
       # Load declarative shell hooks from ~/.clacky/hooks.yml
       ShellHookLoader.load_into(@hooks)
+
+      # Copy ext.yml-contributed hook callbacks (contributes.hooks) onto this
+      # agent's hook manager. The callbacks were registered process-wide at
+      # boot via ExtensionHookLoader.
+      ExtensionHookRegistry.apply_to(@hooks)
 
       # Ensure user-space parsers are in place (~/.clacky/parsers/)
       Utils::ParserManager.setup!

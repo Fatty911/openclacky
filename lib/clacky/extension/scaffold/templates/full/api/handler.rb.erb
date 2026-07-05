@@ -1,0 +1,16 @@
+# frozen_string_literal: true
+
+# API backend for "<%= slug %>". Mounted at /api/ext/<%= slug %>/.
+# Group routes by feature (panel, standalone endpoint, webhook, ...) —
+# the mount point is shared, but paths keep them cleanly separated.
+class <%= const_prefix %>Ext < Clacky::ApiExtension
+  # ── Dashboard panel backend — /api/ext/<%= slug %>/dashboard/*
+  get "/dashboard" do
+    json(panel: "dashboard", at: Time.now.utc.iso8601)
+  end
+
+  # ── Standalone stats endpoint — /api/ext/<%= slug %>/stats
+  get "/stats" do
+    json(uptime: Process.clock_gettime(Process::CLOCK_MONOTONIC).round(2))
+  end
+end

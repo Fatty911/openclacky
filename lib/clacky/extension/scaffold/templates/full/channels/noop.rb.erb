@@ -1,0 +1,40 @@
+# frozen_string_literal: true
+
+# Demo channel adapter for `:<%= slug %>_noop`. It doesn't actually
+# connect anywhere — it exists to show the wiring. Real adapters
+# (see the built-in Feishu / WeCom / Telegram / Discord ones) open
+# a long-poll or webhook and translate messages both ways.
+module Clacky
+  module Channel
+    module Adapters
+      class <%= const_prefix %>NoopAdapter < Base
+        def self.platform_id
+          :<%= slug %>_noop
+        end
+
+        def self.platform_config(_data)
+          {}
+        end
+
+        def initialize(config)
+          @config = config
+        end
+
+        def start(&_on_message)
+          # TODO: connect to your platform and yield events.
+        end
+
+        def stop
+          # TODO: tear down connections.
+        end
+
+        def send_text(_chat_id, text, reply_to: nil)
+          Clacky::Logger.info("[<%= slug %>_noop] would send: #{text}")
+          { message_id: "noop-#{Time.now.to_i}" }
+        end
+      end
+
+      register(<%= const_prefix %>NoopAdapter.platform_id, <%= const_prefix %>NoopAdapter)
+    end
+  end
+end

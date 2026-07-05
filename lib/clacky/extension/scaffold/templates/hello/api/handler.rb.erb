@@ -1,0 +1,9 @@
+# frozen_string_literal: true
+
+# API backend for "<%= slug %>". Mounted at /api/ext/<%= slug %>/.
+# Routes here are relative to that mount.
+class <%= const_prefix %>Ext < Clacky::ApiExtension
+  get "/" do
+    json(message: "hello from <%= slug %>")
+  end
+end

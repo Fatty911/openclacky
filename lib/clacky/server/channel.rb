@@ -36,3 +36,9 @@ require_relative "channel/channel_manager"
 # Must run after the bundled adapters so user adapters can extend or override.
 require_relative "channel/user_adapter_loader"
 Clacky::Channel::Adapters::UserAdapterLoader.load_all
+
+# Discover and load adapters contributed by ext.yml containers
+# (contributes.channels). Runs last so any platform_id collision is won by
+# user adapters, which is consistent with the override priority elsewhere.
+require_relative "channel/extension_adapter_loader"
+Clacky::Channel::Adapters::ExtensionAdapterLoader.load_all

@@ -1,0 +1,15 @@
+id: meeting
+name: Meeting
+description: Real-time meeting transcription and AI assistant
+version: "0.1.0"
+author: OpenClacky
+homepage: https://www.openclacky.com
+license: MIT
+origin: self
+contributes:
+  api: api/handler.rb
+  panels:
+    - id: meeting
+      view: panels/meeting/view.js
+  skills:
+    - id: meeting-summarizer

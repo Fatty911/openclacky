@@ -35,7 +35,7 @@ RSpec.describe "WebUI extension architecture" do
       # Each public registration entry point must bail out when PURE is on, so
       # extension code can never affect the page in the escape-hatch mode.
       %w[register subscribe mount].each do |fn|
-        body = ext_js[/#{fn}\([^)]*\)\s*\{(.+?)\n  \}/m, 1]
+        body = ext_js[/\b#{fn}\([^)]*\)\s*\{(.+?)\n  \}/m, 1]
         expect(body).not_to be_nil, "could not locate #{fn}() body in ext.js"
         expect(body).to match(/if\s*\(\s*PURE/),
           "#{fn}() must short-circuit on PURE (pure-mode no-op guarantee)"
@@ -175,6 +175,36 @@ RSpec.describe "WebUI extension architecture" do
       # markup is enough — no per-slot wiring to forget.
       expect(index).to match(/querySelectorAll\(\s*["']\[data-slot\]["']\s*\)/)
       expect(index).to include("Clacky.ext.renderSlot(")
+    end
+  end
+
+  # ─── Clacky.* host facades — the single public API surface ─────────────────
+
+  describe "Clacky.* namespace exposes core host facades" do
+    # Extensions and AI-generated code should reach host services through the
+    # single `Clacky` namespace (already the escape hatch on window). Each
+    # facade must be assigned back onto `Clacky` next to its IIFE, so both the
+    # legacy bare form (`Sessions.on`) and the recommended form
+    # (`Clacky.Sessions.on` / `window.Clacky.Sessions.on`) work identically.
+    {
+      "Sessions"       => "sessions.js",
+      "Skills"         => "features/skills/store.js",
+      "SkillAC"        => "skills.js",
+      "Router"         => "app.js",
+      "Modal"          => "app.js",
+      "I18n"           => "i18n.js",
+      "Notify"         => "components/notify.js",
+      "Auth"           => "auth.js",
+      "WS"             => "ws.js",
+      "Workspace"      => "features/workspace/store.js",
+      "WorkspaceStore" => "features/workspace/store.js",
+      "Backup"         => "features/backup/store.js",
+    }.each do |name, rel|
+      it "exposes Clacky.#{name} in #{rel}" do
+        src = File.read(File.join(web_dir, rel))
+        expect(src).to include("Clacky.#{name} = "),
+          "#{rel} must assign `Clacky.#{name} = #{name};` so extensions can reach it via the Clacky namespace"
+      end
     end
   end
 end

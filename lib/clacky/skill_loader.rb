@@ -12,6 +12,7 @@ module Clacky
     # Skill discovery locations (in priority order: lower index = lower priority)
     LOCATIONS = [
       :default,            # gem's built-in default skills (lowest priority)
+      :extension,          # contributes.skills declared in ext.yml containers
       :global_clacky,      # ~/.clacky/skills/
       :project_clacky,     # .clacky/skills/ (highest priority among plain skills)
       :brand               # ~/.clacky/brand_skills/ (encrypted, license-gated)
@@ -62,6 +63,7 @@ module Clacky
       clear
 
       load_default_skills
+      load_extension_skills
       load_global_clacky_skills
       
       # Only load project-level skills when working_dir is explicitly provided.
@@ -401,7 +403,7 @@ module Clacky
     # @return [Skill, nil] nil when the skill was rejected (duplicate/limit)
     private def register_skill(skill, source:)
       id             = skill.identifier
-      priority_order = %i[default global_clacky project_clacky brand]
+      priority_order = %i[default extension global_clacky project_clacky brand]
 
       # --- duplicate check ---
       if (existing = @skills[id])
@@ -469,6 +471,31 @@ module Clacky
           register_skill(skill, source: :default)
         rescue StandardError => e
           @errors << "Failed to load default skill #{skill_name}: #{e.message}"
+        end
+      end
+    end
+
+    # Load skills declared via `contributes.skills` in ext.yml containers.
+    # Protected (encrypted) units are skipped here — they are listed by
+    # ExtensionLoader for display/management but their decryption still flows
+    # through the legacy brand_skill chain (see load_brand_skills).
+    private def load_extension_skills
+      result = Clacky::ExtensionLoader.last_result
+      return unless result&.skills
+
+      result.skills.each do |unit|
+        next if unit.spec["protected"] || unit.spec["encrypted"]
+
+        skill_dir_abs = unit.spec["skill_dir_abs"]
+        next unless File.directory?(skill_dir_abs) && File.file?(File.join(skill_dir_abs, "SKILL.md"))
+
+        begin
+          skill = Skill.new(Pathname.new(skill_dir_abs))
+          register_skill(skill, source: :extension)
+        rescue Clacky::AgentError => e
+          @errors << "Error loading extension skill '#{unit.id}' from #{skill_dir_abs}: #{e.message}"
+        rescue StandardError => e
+          @errors << "Unexpected error loading extension skill '#{unit.id}' from #{skill_dir_abs}: #{e.message}"
         end
       end
     end
