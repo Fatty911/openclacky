@@ -1884,7 +1884,7 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  justify-content: center;
+  justify-content: flex-start;
 }
 .agent-card {
   position: relative;
@@ -1914,6 +1914,19 @@ body {
   font-size: 0.9375rem;
   font-weight: 620;
   color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.agent-card-new {
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #16a34a 18%, transparent);
+  color: #16a34a;
+  letter-spacing: 0.04em;
 }
 .agent-card-desc {
   font-size: 0.78125rem;
@@ -1936,6 +1949,11 @@ body {
 .agent-card-badge--custom {
   background: color-mix(in srgb, var(--color-accent-primary) 15%, transparent);
   color: var(--color-accent-primary);
+}
+.agent-card-author {
+  font-size: 0.72rem;
+  color: var(--color-text-tertiary);
+  opacity: 0.8;
 }
 
 .new-session-composer {

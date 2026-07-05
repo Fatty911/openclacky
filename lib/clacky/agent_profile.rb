@@ -53,11 +53,11 @@ module Clacky
 
     # List all available agent profiles across user + extension layers.
     # Precedence on id collision: user override → extension unit.
-    # @return [Array<Hash>] each: { id:, title:, title_zh:, description:, description_zh:, source:, order: }
+    # @return [Array<Hash>] each: { id:, title:, title_zh:, description:, description_zh:, source:, order:, layer:, author: }
     def self.all
       out = {}
 
-      add = lambda do |id, title, title_zh, description, description_zh, source, order|
+      add = lambda do |id, title, title_zh, description, description_zh, source, order, layer, author|
         next if id.nil? || id.empty?
         out[id] = {
           id: id,
@@ -67,6 +67,8 @@ module Clacky
           description_zh: description_zh,
           source: source,
           order: order,
+          layer: layer,
+          author: author,
         }
       end
 
@@ -78,7 +80,8 @@ module Clacky
         add.call(
           unit.id, title, spec["title_zh"].to_s,
           spec["description"].to_s, spec["description_zh"].to_s,
-          "extension", spec["order"]
+          "extension", spec["order"], unit.layer.to_s,
+          spec["author"].to_s
         )
       end
 
@@ -91,7 +94,8 @@ module Clacky
         add.call(
           id, meta["title"] || meta["name"] || id, meta["title_zh"].to_s,
           meta["description"].to_s, meta["description_zh"].to_s,
-          "user", meta["order"]
+          "user", meta["order"], "user",
+          meta["author"].to_s.empty? ? "You" : meta["author"].to_s
         )
       end
 

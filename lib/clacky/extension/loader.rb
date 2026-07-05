@@ -11,6 +11,10 @@ module Clacky
   #
   #   id: canvas-suite
   #   name: Canvas Suite
+  #   version: "1.0.0"
+  #   author: Jane Doe                # display credit (optional)
+  #   homepage: https://example.com   # optional
+  #   license: MIT                    # optional, SPDX identifier
   #   origin: self                 # self | marketplace | enterprise
   #   contributes:
   #     panels:
@@ -171,6 +175,11 @@ module Clacky
 
         { ext_id: ext_id, layer: layer, dir: dir, origin: origin,
           public: data["public"] == true,
+          name: (data["name"] || ext_id).to_s,
+          version: data["version"].to_s,
+          author: data["author"].to_s,
+          homepage: data["homepage"].to_s,
+          license: data["license"].to_s,
           contributes: data["contributes"] || {},
           raw: data }
       rescue StandardError => e
@@ -331,6 +340,9 @@ module Clacky
                    "description"    => spec["description"].to_s,
                    "description_zh" => spec["description_zh"].to_s,
                    "order"          => spec["order"],
+                   "author"         => container[:author],
+                   "homepage"       => container[:homepage],
+                   "license"        => container[:license],
                    "panels"         => Array(spec["panels"]).map(&:to_s),
                    "skills"         => Array(spec["skills"]).map(&:to_s),
                  })

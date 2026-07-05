@@ -3757,8 +3757,9 @@ module Clacky
 
       # GET /api/agents — list all available agent profiles (default + user override + ext).
       # Each entry carries { id, title, title_zh, description, description_zh,
-      # source, order }. Extensions can supply title_zh / description_zh in their
-      # ext.yml agent unit spec so the New Session cards read naturally in Chinese.
+      # source, order, layer, author }. Extensions can supply title_zh /
+      # description_zh / author in their ext.yml so the New Session cards read
+      # naturally and credit their author.
       def api_list_agents(res)
         agents = Clacky::AgentProfile.all
         json_response(res, 200, { agents: agents })
