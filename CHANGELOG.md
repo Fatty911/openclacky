@@ -2017,3 +2017,8 @@ This is a major release with significant improvements to skill system, conversat
 [Unreleased]: https://github.com/yafeilee/clacky/compare/v0.5.0...HEAD
 [0.5.0]: https://github.com/yafeilee/clacky/compare/v0.1.0...v0.5.0
 [0.1.0]: https://github.com/yafeilee/clacky/releases/tag/v0.1.0
+
+## 2026-07-05
+### Added
+- 上游同步工作流 `sync-upstream.yml`
+- PR #349 (open): feat: support AGENTS.md workspace rules
