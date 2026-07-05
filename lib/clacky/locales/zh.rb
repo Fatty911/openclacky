@@ -20,7 +20,25 @@ module Clacky
       "llm.error.bad_request"           => "请求参数有误，请检查模型配置或重试",
       "llm.error.request_timeout"       => "请求超时（已重试 %<retries>d 次）",
       "llm.error.network_failed"        => "网络连接失败（已重试 %<retries>d 次）",
-      "llm.error.service_unavailable"   => "服务暂时不可用（已重试 %<retries>d 次）"
+      "llm.error.service_unavailable"   => "服务暂时不可用（已重试 %<retries>d 次）",
+      "platform.error.invalid_proof"        => "许可证密钥无效，请检查后重试。",
+      "platform.error.invalid_signature"    => "请求签名无效。",
+      "platform.error.nonce_replayed"       => "检测到重复请求，请重试。",
+      "platform.error.timestamp_expired"    => "系统时钟不同步，请校准本机时间后重试。",
+      "platform.error.license_revoked"      => "该许可证已被吊销，请联系客服。",
+      "platform.error.license_expired"      => "该许可证已过期，请续订后继续。",
+      "platform.error.device_limit_reached" => "该许可证的设备数量已达上限。",
+      "platform.error.device_revoked"       => "该设备已从许可证中移除。",
+      "platform.error.invalid_license"      => "未找到许可证密钥，请核对后重试。",
+      "platform.error.device_not_found"     => "设备未注册，请重新激活。",
+      "platform.error.contributor_required" => "发布扩展需要先成为扩展贡献者。请登录平台，打开「我的扩展」页面，点击「成为扩展贡献者」即可开通（无需审核）。",
+      "platform.error.missing_device_token" => "当前设备未绑定平台账户，请先授权此设备后再发布。",
+      "platform.error.invalid_device_token" => "设备授权已失效，请重新授权此设备。",
+      "platform.error.device_token_revoked" => "此设备的授权已被撤销，请重新授权后再发布。",
+      "platform.error.device_token_expired" => "此设备的授权已过期，请重新授权后再发布。",
+      "platform.error.owner_user_not_found" => "未找到该设备对应的账户，请重新授权此设备。",
+      "platform.error.generic"              => "请求失败（HTTP %<code>s），请联系客服。",
+      "platform.error.generic_with_code"    => "请求失败（HTTP %<code>s，错误码：%<error_code>s），请联系客服。"
     }.freeze
   end
 end

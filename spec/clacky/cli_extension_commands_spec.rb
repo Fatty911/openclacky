@@ -8,16 +8,17 @@ RSpec.describe Clacky::CliExtensionCommands do
   end
 
   describe "publish" do
-    it "aborts when the license is not user-activated" do
-      brand = instance_double(Clacky::BrandConfig, activated?: false, user_licensed?: false)
-      allow(Clacky::BrandConfig).to receive(:load).and_return(brand)
+    it "aborts when the device is not bound to a platform account" do
+      allow(Clacky::Identity).to receive(:load).and_return(Clacky::Identity.new({}))
 
       expect { run("publish", "my-ext") }.to raise_error(SystemExit)
-        .and output(/activated user license/).to_stderr
+        .and output(/not bound to a platform account/).to_stderr
     end
 
     it "packs then uploads, printing the published version on success" do
-      brand = instance_double(Clacky::BrandConfig, activated?: true, user_licensed?: true)
+      allow(Clacky::Identity).to receive(:load)
+        .and_return(Clacky::Identity.new("device_token" => "clacky-dt-abc"))
+      brand = instance_double(Clacky::BrandConfig)
       allow(Clacky::BrandConfig).to receive(:load).and_return(brand)
 
       pack_result = Clacky::ExtensionPackager::Result.new(ext_id: "my-ext", path: nil, units: nil)
@@ -35,7 +36,9 @@ RSpec.describe Clacky::CliExtensionCommands do
     end
 
     it "hints at --force when the extension already exists" do
-      brand = instance_double(Clacky::BrandConfig, activated?: true, user_licensed?: true)
+      allow(Clacky::Identity).to receive(:load)
+        .and_return(Clacky::Identity.new("device_token" => "clacky-dt-abc"))
+      brand = instance_double(Clacky::BrandConfig)
       allow(Clacky::BrandConfig).to receive(:load).and_return(brand)
       allow(Clacky::ExtensionPackager).to receive(:pack) do |_id, out_dir:|
         path = File.join(out_dir, "my-ext.zip")

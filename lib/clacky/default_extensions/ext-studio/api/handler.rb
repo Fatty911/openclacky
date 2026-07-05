@@ -2,6 +2,8 @@
 
 require "json"
 require "tmpdir"
+require "socket"
+require "digest"
 
 # Extension Studio — backend for the debug/publish panels. Mounted at
 # /api/ext/ext-studio/. Reads the resolved extension tree, runs the verifier,
@@ -59,13 +61,18 @@ class ExtStudioExt < Clacky::ApiExtension
 
   # POST /api/ext/ext-studio/publish
   # body: { ext_id, force?, status?, changelog? }
-  # Packs then uploads to the marketplace. Requires an activated user license.
+  # Packs then uploads to the marketplace. Requires the device to be bound to a
+  # platform account (device token). When unbound, returns a 428 with a hint so
+  # the UI can trigger the on-demand device-authorization flow.
   post "/publish" do
     ext_id = require_ext_id!
-    brand = Clacky::BrandConfig.load
-    unless brand.activated? && brand.user_licensed?
-      error!("publishing requires an activated user license", status: 403)
+
+    unless Clacky::Identity.load.bound?
+      error!("device not bound to a platform account; authorize this device to publish",
+             status: 428, needs_binding: true)
     end
+
+    brand = Clacky::BrandConfig.load
 
     Dir.mktmpdir("clacky-ext-studio-publish") do |tmp|
       res      = Clacky::ExtensionPackager.pack(ext_id, out_dir: tmp)
@@ -102,7 +109,7 @@ class ExtStudioExt < Clacky::ApiExtension
 
     exts = Array(result[:extensions]).map do |ext|
       {
-        id: ext["id"] || ext["slug"] || ext["name"],
+        id: ext["name"] || ext["slug"] || ext["id"],
         name: ext["name"],
         version: (ext["latest_version"] || {})["version"] || ext["version"],
         status: ext["status"],
@@ -130,6 +137,62 @@ class ExtStudioExt < Clacky::ApiExtension
     name = idea ? "扩展开发: #{idea[0, 40]}" : "扩展开发"
     sid  = create_session(name: name, prompt: idea, profile: "ext-developer", source: :setup)
     json(ok: true, session_id: sid)
+  end
+
+  # GET /api/ext/ext-studio/binding
+  # Reports whether this device is bound to a platform account, so the publish
+  # panel can decide up-front whether to run the binding flow.
+  get "/binding" do
+    identity = Clacky::Identity.load
+    json(bound: identity.bound?, user_id: identity.user_id)
+  end
+
+  # POST /api/ext/ext-studio/binding/start
+  # Kicks off an RFC 8628 device-authorization flow against the platform and
+  # returns the verification URL the panel opens plus the device_code to poll.
+  post "/binding/start" do
+    client = Clacky::PlatformHttpClient.new
+    result = client.post("/api/v1/device/authorize", {
+      device_id:   binding_device_id,
+      device_info: { os: RUBY_PLATFORM, hostname: Socket.gethostname, app_version: Clacky::VERSION }
+    })
+
+    error!(result[:error] || "could not start authorization", status: 502) unless result[:success]
+
+    data = result[:data]
+    json(
+      ok:                        true,
+      device_code:               data["device_code"],
+      user_code:                 data["user_code"],
+      verification_uri:          data["verification_uri"],
+      verification_uri_complete: data["verification_uri_complete"],
+      interval:                  data["interval"] || 5
+    )
+  end
+
+  # POST /api/ext/ext-studio/binding/poll  { device_code }
+  # Polls the platform once. On approval, binds the issued device token to the
+  # local Identity so subsequent publishes authenticate as the platform account.
+  post "/binding/poll" do
+    device_code = presence(json_body["device_code"])
+    error!("device_code required", status: 422) unless device_code
+
+    client = Clacky::PlatformHttpClient.new
+    result = client.post("/api/v1/device/token", { device_code: device_code })
+    data   = result[:data] || {}
+    status = data["status"]
+
+    if result[:success] && status == "approved"
+      Clacky::Identity.load.bind!(
+        device_token: data["device_token"],
+        user_id:      data["user_id"]
+      ) if data["device_token"]
+      json(ok: true, status: "approved")
+    elsif status == "pending"
+      json(ok: true, status: "pending")
+    else
+      json(ok: false, status: status || "error", error: result[:error])
+    end
   end
 
   private def local_containers(result)
@@ -180,5 +243,12 @@ class ExtStudioExt < Clacky::ApiExtension
   private def presence(value)
     str = value.to_s.strip
     str.empty? ? nil : str
+  end
+
+  # Stable per-machine id for the device-authorization flow. Matches the
+  # onboarding device_id so binding reuses the same device row on the platform.
+  private def binding_device_id
+    components = [Socket.gethostname, ENV["USER"] || ENV["USERNAME"] || "", RUBY_PLATFORM]
+    Digest::SHA256.hexdigest(components.join(":"))
   end
 end

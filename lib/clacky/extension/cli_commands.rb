@@ -123,12 +123,12 @@ module Clacky
     method_option :status, type: :string, desc: "Publish status: draft or published"
     method_option :changelog, type: :string, desc: "Release notes for this version"
     def publish(id)
-      brand = Clacky::BrandConfig.load
-      unless brand.activated? && brand.user_licensed?
-        warn "Error: publishing requires an activated user license. Run activation first."
+      unless Clacky::Identity.load.bound?
+        warn "Error: this device is not bound to a platform account. Authorize it first to publish."
         exit 1
       end
 
+      brand = Clacky::BrandConfig.load
       Dir.mktmpdir("clacky-ext-publish") do |tmp|
         res      = Clacky::ExtensionPackager.pack(id, out_dir: tmp)
         zip_data = File.binread(res.path)

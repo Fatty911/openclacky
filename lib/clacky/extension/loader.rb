@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "json"
 
 module Clacky
   # Discovers extension containers across three source layers and resolves them
@@ -43,6 +44,7 @@ module Clacky
     BUILTIN_DIR   = File.expand_path("../default_extensions", __dir__)
     INSTALLED_DIR = File.expand_path("~/.clacky/ext/installed")
     LOCAL_DIR     = File.expand_path("~/.clacky/ext/local")
+    DISABLED_FILE = File.expand_path("~/.clacky/ext/disabled.json")
     MANIFEST      = "ext.yml"
 
     # Layers in ascending priority; later entries override earlier ones by id.
@@ -82,7 +84,7 @@ module Clacky
       # manifest changes, we invalidate and rescan. Pass `force: true` to
       # bypass the cache (used by CLI / tests).
       def load_all(layers: default_layers, force: false)
-        fingerprint = fingerprint_layers(layers)
+        fingerprint = [fingerprint_layers(layers), disabled_fingerprint]
         if !force && @last_result && @last_fingerprint == fingerprint
           return @last_result
         end
@@ -113,7 +115,11 @@ module Clacky
         end
 
         result = Result.new(panels: [], api: [], skills: [], agents: [], channels: [], patches: [], hooks: [], errors: errors, overridden: overridden, containers: by_id)
-        by_id.each_value { |container| resolve_units(container, result) }
+        disabled = disabled_ids
+        by_id.each_value do |container|
+          container[:disabled] = disabled.include?(container[:ext_id])
+          resolve_units(container, result) unless container[:disabled]
+        end
 
         @last_result = result
         @last_fingerprint = fingerprint
@@ -133,6 +139,62 @@ module Clacky
       def invalidate_cache!
         @last_fingerprint = nil
       end
+
+      # ── Disabled state ────────────────────────────────────────────────
+      # A disabled extension stays discoverable (still listed as installed)
+      # but contributes no units until re-enabled. Persisted as a JSON array
+      # of ext ids at ~/.clacky/ext/disabled.json.
+
+      def disabled_ids
+        return Set.new unless File.file?(DISABLED_FILE)
+
+        data = JSON.parse(File.read(DISABLED_FILE))
+        data.is_a?(Array) ? data.map(&:to_s).to_set : Set.new
+      rescue StandardError
+        Set.new
+      end
+
+      def disabled?(id)
+        disabled_ids.include?(id.to_s)
+      end
+
+      def disable!(id)
+        ids = disabled_ids
+        ids << id.to_s
+        write_disabled(ids)
+      end
+
+      def enable!(id)
+        ids = disabled_ids
+        ids.delete(id.to_s)
+        write_disabled(ids)
+      end
+
+      # Remove an installed extension by deleting its installed-layer dir.
+      # Only the installed layer is removable (builtin ships with the gem;
+      # local is the author's own working copy). Returns true on removal.
+      def uninstall!(id)
+        dir = File.join(INSTALLED_DIR, id.to_s)
+        return false unless File.directory?(dir)
+
+        FileUtils.rm_rf(dir)
+        enable!(id) # clear any stale disabled flag
+        invalidate_cache!
+        true
+      end
+
+      private def write_disabled(ids)
+        FileUtils.mkdir_p(File.dirname(DISABLED_FILE))
+        File.write(DISABLED_FILE, JSON.generate(ids.to_a.sort))
+        invalidate_cache!
+      end
+
+      private def disabled_fingerprint
+        File.file?(DISABLED_FILE) ? File.mtime(DISABLED_FILE).to_f : 0.0
+      rescue StandardError
+        Object.new
+      end
+
 
       # A layer's fingerprint is the sorted list of "<ext_id>|<mtime>" for
       # every container manifest present. Cheap to compute (one stat per

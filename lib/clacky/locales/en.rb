@@ -20,7 +20,25 @@ module Clacky
       "llm.error.bad_request"           => "Bad request: invalid parameters. Please check your model configuration",
       "llm.error.request_timeout"       => "Request timed out after %<retries>d retries",
       "llm.error.network_failed"        => "Network connection failed after %<retries>d retries",
-      "llm.error.service_unavailable"   => "Service unavailable after %<retries>d retries"
+      "llm.error.service_unavailable"   => "Service unavailable after %<retries>d retries",
+      "platform.error.invalid_proof"        => "Invalid license key — please check and try again.",
+      "platform.error.invalid_signature"    => "Invalid request signature.",
+      "platform.error.nonce_replayed"       => "Duplicate request detected. Please try again.",
+      "platform.error.timestamp_expired"    => "System clock is out of sync. Please adjust your time settings.",
+      "platform.error.license_revoked"      => "This license has been revoked. Please contact support.",
+      "platform.error.license_expired"      => "This license has expired. Please renew to continue.",
+      "platform.error.device_limit_reached" => "Device limit reached for this license.",
+      "platform.error.device_revoked"       => "This device has been revoked from the license.",
+      "platform.error.invalid_license"      => "License key not found. Please verify the key.",
+      "platform.error.device_not_found"     => "Device not registered. Please re-activate.",
+      "platform.error.contributor_required" => "Publishing extensions requires becoming a contributor. Sign in, open \"My Extensions\", and click \"Become a contributor\" (no review needed).",
+      "platform.error.missing_device_token" => "This device is not bound to a platform account. Authorize it before publishing.",
+      "platform.error.invalid_device_token" => "Device authorization is invalid. Please re-authorize this device.",
+      "platform.error.device_token_revoked" => "This device's authorization has been revoked. Please re-authorize before publishing.",
+      "platform.error.device_token_expired" => "This device's authorization has expired. Please re-authorize before publishing.",
+      "platform.error.owner_user_not_found" => "No account found for this device. Please re-authorize it.",
+      "platform.error.generic"              => "Request failed (HTTP %<code>s). Please contact support.",
+      "platform.error.generic_with_code"    => "Request failed (HTTP %<code>s, code: %<error_code>s). Please contact support."
     }.freeze
   end
 end

@@ -30,7 +30,7 @@ RSpec.describe Clacky::PlatformHttpClient, "#parse_response" do
     it "maps known error code to localized message" do
       result = parse(401, { "code" => "invalid_proof" })
       expect(result[:success]).to be false
-      expect(result[:error]).to eq(Clacky::PlatformHttpClient::API_ERROR_MESSAGES["invalid_proof"])
+      expect(result[:error]).to eq(Clacky::I18n.t("platform.error.invalid_proof"))
     end
 
     it "uses `error` string from body when no code mapping" do
@@ -59,18 +59,18 @@ RSpec.describe Clacky::PlatformHttpClient, "#parse_response" do
 
     it "ignores blank/empty entries and falls back to generic message" do
       result = parse(500, { "error" => "", "errors" => [], "message" => "  " })
-      expect(result[:error]).to match(/Request failed \(HTTP 500\)/)
+      expect(result[:error]).to include("500")
     end
 
     it "includes machine code in generic fallback when present" do
       result = parse(422, { "code" => "totally_unknown_code" })
-      expect(result[:error]).to include("code: totally_unknown_code")
+      expect(result[:error]).to include("totally_unknown_code")
     end
 
     it "handles non-JSON body gracefully" do
       result = parse(502, "<html>Bad Gateway</html>")
       expect(result[:success]).to be false
-      expect(result[:error]).to match(/Request failed \(HTTP 502\)/)
+      expect(result[:error]).to include("502")
     end
   end
 end

@@ -4,6 +4,7 @@ require "net/http"
 require "uri"
 require "json"
 require "fileutils"
+require_relative "locales/i18n"
 
 module Clacky
   # PlatformHttpClient provides a resilient HTTP client for all calls to the
@@ -41,18 +42,14 @@ module Clacky
     DOWNLOAD_MAX_REDIRECTS = 10
 
     # API error code → human-readable message table (shared across all callers)
-    API_ERROR_MESSAGES = {
-      "invalid_proof"        => "Invalid license key — please check and try again.",
-      "invalid_signature"    => "Invalid request signature.",
-      "nonce_replayed"       => "Duplicate request detected. Please try again.",
-      "timestamp_expired"    => "System clock is out of sync. Please adjust your time settings.",
-      "license_revoked"      => "This license has been revoked. Please contact support.",
-      "license_expired"      => "This license has expired. Please renew to continue.",
-      "device_limit_reached" => "Device limit reached for this license.",
-      "device_revoked"       => "This device has been revoked from the license.",
-      "invalid_license"      => "License key not found. Please verify the key.",
-      "device_not_found"     => "Device not registered. Please re-activate."
-    }.freeze
+    # Server error codes that have a localized message under the
+    # "platform.error.<code>" i18n key (see locales/en.rb & zh.rb).
+    KNOWN_ERROR_CODES = %w[
+      invalid_proof invalid_signature nonce_replayed timestamp_expired
+      license_revoked license_expired device_limit_reached device_revoked
+      invalid_license device_not_found contributor_required missing_device_token
+      invalid_device_token device_token_revoked device_token_expired owner_user_not_found
+    ].freeze
 
     # Auto-detects the target host(s):
     #   - When CLACKY_LICENSE_SERVER is set → single host (dev override, no failover)
@@ -360,9 +357,15 @@ module Clacky
       else
         error_code = body["code"]
         server_msg = extract_server_error_message(body)
-        error_msg  = API_ERROR_MESSAGES[error_code] ||
-                     server_msg ||
-                     "Request failed (HTTP #{code}#{error_code ? ", code: #{error_code}" : ""}). Please contact support."
+        error_msg  = if KNOWN_ERROR_CODES.include?(error_code)
+                       Clacky::I18n.t("platform.error.#{error_code}")
+                     elsif server_msg
+                       server_msg
+                     elsif error_code
+                       Clacky::I18n.t("platform.error.generic_with_code", code: code, error_code: error_code)
+                     else
+                       Clacky::I18n.t("platform.error.generic", code: code)
+                     end
         { success: false, error: error_msg, data: body }
       end
     end

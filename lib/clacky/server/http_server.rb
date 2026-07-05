@@ -537,6 +537,10 @@ module Clacky
         when ["POST",   "/api/onboard/skip-soul"] then api_onboard_skip_soul(req, res)
         when ["GET",    "/api/store/skills"]          then api_store_skills(res)
         when ["GET",    "/api/store/extensions"]      then api_store_extensions(req, res)
+        when ["GET",    "/api/store/extension"]       then api_store_extension_detail(req, res)
+        when ["POST",   "/api/store/extension/disable"] then api_store_extension_disable(req, res)
+        when ["POST",   "/api/store/extension/enable"]  then api_store_extension_enable(req, res)
+        when ["DELETE", "/api/store/extension"]         then api_store_extension_uninstall(req, res)
         when ["GET",    "/api/brand/status"]      then api_brand_status(res)
         when ["POST",   "/api/brand/activate"]    then api_brand_activate(req, res)
         when ["DELETE", "/api/brand/license"]     then api_brand_deactivate(res)
@@ -1001,7 +1005,13 @@ module Clacky
             api_key:  data["api_key"],
             base_url: data["base_url"],
             model:    data["default_model"]
-          )
+          ) if data["api_key"]
+          if data["device_token"]
+            Clacky::Identity.load.bind!(
+              device_token: data["device_token"],
+              user_id:      data["user_id"]
+            )
+          end
           json_response(res, 200, {
             ok:            true,
             status:        "approved",
@@ -2226,13 +2236,110 @@ module Clacky
         result = brand.search_extensions!(query: req.query["q"], sort: req.query["sort"])
 
         if result[:success]
-          json_response(res, 200, { ok: true, extensions: result[:extensions] })
+          installed = installed_extension_slugs
+          extensions = Array(result[:extensions]).map do |ext|
+            slug = ext["name"] || ext[:name] || ext["slug"] || ext[:slug]
+            ext.merge("installed" => installed.include?(slug))
+          end
+          json_response(res, 200, { ok: true, extensions: extensions })
         else
           json_response(res, 200, {
             ok:         true,
             extensions: [],
             warning:    result[:error] || "Could not reach the extension store."
           })
+        end
+      end
+
+      # Slugs of every extension container currently loaded (any layer), used to
+      # flag "installed" on the public marketplace catalog.
+      def installed_extension_slugs
+        result = Clacky::ExtensionLoader.load_all
+        Array(result&.containers).map { |id, _c| id }.to_set
+      rescue StandardError
+        Set.new
+      end
+
+      # GET /api/store/extension?id=<slug-or-id>
+      #
+      # Public detail for a single marketplace extension (contributes + version
+      # history). Anonymous, proxies BrandConfig#extension_detail!.
+      def api_store_extension_detail(req, res)
+        id = req.query["id"].to_s
+        if id.strip.empty?
+          json_response(res, 400, { ok: false, error: "Missing id." })
+          return
+        end
+
+        brand  = Clacky::BrandConfig.load
+        result = brand.extension_detail!(id)
+
+        if result[:success] && result[:extension]
+          ext  = result[:extension]
+          slug = ext["name"] || ext[:name] || ext["slug"] || ext[:slug]
+          container = extension_container(slug)
+          ext  = ext.merge(
+            "installed" => !container.nil?,
+            "removable" => container && container[:layer] == :installed,
+            "disabled"  => container ? container[:disabled] == true : false
+          )
+          json_response(res, 200, { ok: true, extension: ext })
+        else
+          json_response(res, 404, { ok: false, error: result[:error] || "Not found" })
+        end
+      end
+
+      # Locate an installed container by slug/id (nil when not installed).
+      def extension_container(slug)
+        return nil if slug.to_s.strip.empty?
+
+        result = Clacky::ExtensionLoader.load_all
+        Array(result&.containers).to_h[slug.to_s]
+      rescue StandardError
+        nil
+      end
+
+      # POST /api/store/extension/disable   body: { id: <slug> }
+      def api_store_extension_disable(req, res)
+        toggle_extension(req, res, :disable)
+      end
+
+      # POST /api/store/extension/enable    body: { id: <slug> }
+      def api_store_extension_enable(req, res)
+        toggle_extension(req, res, :enable)
+      end
+
+      def toggle_extension(req, res, action)
+        id = parse_json_body(req)["id"].to_s
+        container = extension_container(id)
+        if container.nil?
+          json_response(res, 404, { ok: false, error: "Not installed." })
+          return
+        end
+
+        action == :disable ? Clacky::ExtensionLoader.disable!(id) : Clacky::ExtensionLoader.enable!(id)
+        json_response(res, 200, { ok: true, id: id, disabled: action == :disable })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      # DELETE /api/store/extension   body: { id: <slug> }
+      def api_store_extension_uninstall(req, res)
+        id = parse_json_body(req)["id"].to_s
+        container = extension_container(id)
+        if container.nil?
+          json_response(res, 404, { ok: false, error: "Not installed." })
+          return
+        end
+        unless container[:layer] == :installed
+          json_response(res, 422, { ok: false, error: "Only marketplace-installed extensions can be removed." })
+          return
+        end
+
+        if Clacky::ExtensionLoader.uninstall!(id)
+          json_response(res, 200, { ok: true, id: id })
+        else
+          json_response(res, 404, { ok: false, error: "Not installed." })
         end
       end
 
@@ -4169,14 +4276,12 @@ module Clacky
       # Returns two separate groups:
       #   cloud_skills — published to the platform (with download_count)
       #   local_skills — local user skills not yet published, or published but with local changes
-      # Requires user_licensed? — returns 403 otherwise.
+      # Local skills are always returned. Cloud listing needs a user license;
+      # when absent we return licensed:false so the UI can explain that becoming
+      # a creator is required to upload.
       private def api_creator_skills(res)
-        brand = Clacky::BrandConfig.load
-
-        unless brand.user_licensed?
-          json_response(res, 403, { ok: false, error: "User license required" })
-          return
-        end
+        brand    = Clacky::BrandConfig.load
+        licensed = brand.user_licensed?
 
         @skill_loader.load_all
         upload_meta  = Clacky::BrandConfig.load_upload_meta
@@ -4205,8 +4310,9 @@ module Clacky
           }
         end
 
-        # Fetch platform skills (may fail — we still return local skills)
-        platform_result = brand.fetch_my_skills!
+        # Fetch platform skills only when licensed (may still fail — we always
+        # return local skills regardless).
+        platform_result = licensed ? brand.fetch_my_skills! : { success: false, skills: [] }
         platform_skills = platform_result[:success] ? platform_result[:skills] : []
 
         # cloud_skills: everything that has been published to the platform
@@ -4242,6 +4348,7 @@ module Clacky
 
         json_response(res, 200, {
           ok:                   true,
+          licensed:             licensed,
           cloud_skills:         cloud_skills,
           local_skills:         local_skills,
           platform_fetch_error: platform_result[:success] ? nil : platform_result[:error]

@@ -583,10 +583,11 @@ module Clacky
       { success: false, error: "Network error: #{e.message}" }
     end
 
-    # ── Extension marketplace (parallels the skill upload path above) ──
-    # Extensions authenticate with the same license-HMAC scheme as skills:
-    # a system-assigned user license proves creator identity. See platform
-    # Api::V1::Client::ExtensionsController.
+    # ── Extension marketplace (creator publishing via device token) ──
+    # Extensions authenticate with the device token stored in identity.yml,
+    # which binds this device to a platform account. This is independent of any
+    # license — publishing only requires the owning user to be a contributor.
+    # See platform Api::V1::Client::ExtensionsController.
 
     # Upload (publish) a packed extension ZIP to the platform.
     # ext_id:   extension slug (matches ext.yml id)
@@ -596,16 +597,16 @@ module Clacky
     # Returns { success: true, extension: {...} } or
     #         { success: false, error: "...", already_exists: Boolean }.
     def upload_extension!(ext_id, zip_data, force: false, status: nil, changelog: nil)
-      return { success: false, error: "License not activated" } unless activated?
-      return { success: false, error: "User license required to publish extensions" } unless user_licensed?
+      identity = Clacky::Identity.load
+      return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
 
-      fields = client_signed_fields
       path = if force
                "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}"
              else
                "/api/v1/client/extensions"
              end
 
+      fields = { "device_token" => identity.device_token }
       fields["status"]    = status.to_s    if status
       fields["changelog"] = changelog.to_s if changelog
 
@@ -638,11 +639,13 @@ module Clacky
     # Uses GET /api/v1/client/extensions (HMAC-signed, system license only).
     # Returns { success: bool, extensions: [], error: }.
     def fetch_my_extensions!
-      return { success: false, error: "License not activated", extensions: [] } unless activated?
-      return { success: false, error: "User license required", extensions: [] } unless user_licensed?
+      identity = Clacky::Identity.load
+      return { success: false, error: "Device not bound to a platform account", extensions: [] } unless identity.bound?
 
-      query    = URI.encode_www_form(client_signed_fields)
-      response = platform_client.get("/api/v1/client/extensions?#{query}")
+      response = platform_client.get(
+        "/api/v1/client/extensions",
+        headers: { "Authorization" => "Bearer #{identity.device_token}" }
+      )
 
       if response[:success]
         { success: true, extensions: response[:data]["extensions"] || [] }
@@ -654,12 +657,14 @@ module Clacky
     # Soft-delete (unpublish) one of the creator's extensions by id/slug.
     # Uses DELETE /api/v1/client/extensions/:id. Returns { success:, error: }.
     def delete_extension!(ext_id)
-      return { success: false, error: "License not activated" } unless activated?
-      return { success: false, error: "User license required" } unless user_licensed?
+      identity = Clacky::Identity.load
+      return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
 
-      query    = URI.encode_www_form(client_signed_fields)
-      path     = "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}?#{query}"
-      response = platform_client.delete(path)
+      path     = "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}"
+      response = platform_client.delete(
+        path,
+        headers: { "Authorization" => "Bearer #{identity.device_token}" }
+      )
 
       if response[:success]
         { success: true }
@@ -686,7 +691,20 @@ module Clacky
       { success: false, error: "Network error: #{e.message}", extensions: [] }
     end
 
-    # ── Brand extensions (parallels the brand-skill download path) ──
+    # Fetch a single public marketplace extension's detail (contributes +
+    # version history). Anonymous, no license required. Returns
+    # { success:, extension:, error: }.
+    def extension_detail!(id)
+      response = platform_client.get("/api/v1/extensions/#{URI.encode_www_form_component(id.to_s)}")
+
+      if response[:success]
+        { success: true, extension: response[:data]["extension"] }
+      else
+        { success: false, error: response[:error] || "Not found" }
+      end
+    rescue StandardError => e
+      { success: false, error: "Network error: #{e.message}" }
+    end
     # Extensions bundled into the activated license's distribution are free and
     # unencrypted. They are fetched over the same license-HMAC scheme as brand
     # skills and installed into the ExtensionLoader `installed` layer.
