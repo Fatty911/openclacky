@@ -23,4 +23,7 @@ gem "climate_control"
 
 gem "ruby_rich", "~> 0.5.2" if ruby_version >= Gem::Version.new("2.6")
 
-gem "cgi" if ruby_version >= Gem::Version.new("4.0")
+if ruby_version >= Gem::Version.new("4.0")
+  gem "cgi"
+  gem "ostruct"
+end
