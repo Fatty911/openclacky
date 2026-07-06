@@ -187,7 +187,7 @@ module Clacky
         require "yaml"
         path = File.join(dir, "ext.yml")
         return nil unless File.file?(path)
-        YAML.safe_load_file(path, permitted_classes: [Symbol]) || {}
+        YAML.safe_load(File.read(path), permitted_classes: [Symbol]) || {}
       rescue StandardError
         nil
       end

@@ -85,7 +85,7 @@ end
 def saved_bot_token
   yml_path = File.expand_path("~/.clacky/channels.yml")
   return nil unless File.exist?(yml_path)
-  data = YAML.safe_load_file(yml_path, permitted_classes: [Symbol], aliases: true) rescue nil
+  data = YAML.safe_load(File.read(yml_path), permitted_classes: [Symbol], aliases: true) rescue nil
   data&.dig("channels", "discord", "bot_token") || data&.dig(:channels, :discord, :bot_token)
 end
 

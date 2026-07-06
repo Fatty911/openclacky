@@ -98,7 +98,7 @@ module Clacky
       # carrying encrypted skills is produced by the platform pipeline; refuse
       # to re-pack it so we never smuggle marketplace artifacts out of band.
       private def refuse_protected!(slug, container_dir)
-        manifest = YAML.safe_load_file(File.join(container_dir, MANIFEST), permitted_classes: [Symbol]) || {}
+        manifest = YAML.safe_load(File.read(File.join(container_dir, MANIFEST)), permitted_classes: [Symbol]) || {}
         origin = (manifest["origin"] || "self").to_s
         if origin == "marketplace"
           raise Error, "refusing to pack #{slug}: origin=marketplace is produced by the platform, not hand-packed"
