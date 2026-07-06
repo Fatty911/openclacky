@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2026-07-06
+
+### Added
+- Extension ecosystem: install, manage, and publish extensions with Creator Studio
+- Brand extension and brand badge support for extension agents
+- Hook/profile extension type for intercepting and customizing agent behavior
+- Extension upload CLI for publishing extensions from the command line
+- New session page with improved layout and discoverability
+- Session auto-cleanup hint, skeleton loading, and type filter in trash panel
+- Renew button on brand warning bar for expiring subscriptions
+- i18n tooltips for header theme toggle and trash toolbar buttons
+- Refresh button in header to reload sessions
+- xhigh reasoning effort level for supported models
+- i18n file upload error messages
+
+### Improved
+- Merge Creator Center into ext-studio as a unified extension hub
+- Extension developer experience: scaffold template improvements, badge and author metadata support
+- Share modal UI polish — theme dots on hover, close button hover effect, layout refinement
+- Unify Clacky.* JS namespace and single-segment extension architecture
+- Migrate default agents to default extensions with unified panel visibility
+
+### Fixed
+- Ctrl+C now works properly in TUI auto-answer mode
+- Show-system-skills toggle persists correctly and uses theme accent color
+- Cron display handles every-N-hours with weekdays pattern correctly
+- New-session dropdown arrow button responds to both click and keyboard
+- New cron virtual entry inserts at the correct position relative to pinned sessions
+- File upload error messages use i18n consistently
+
 ## [1.3.6] - 2026-06-30
 
 ### Added
