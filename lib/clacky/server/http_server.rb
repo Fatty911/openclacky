@@ -1419,6 +1419,9 @@ module Clacky
         output_dir   = body["output_dir"].to_s
         output_dir   = @agent_config.default_working_dir || Dir.pwd if output_dir.empty?
 
+        session_id = body["session_id"].to_s
+        session_id = nil if session_id.empty?
+
         result = Clacky::Media::Generator.new(@agent_config).generate_image(
           prompt: prompt,
           aspect_ratio: aspect_ratio,
@@ -1427,7 +1430,7 @@ module Clacky
           images: body["images"]
         )
         if result["success"]
-          log_media_usage(result, prompt: prompt)
+          log_media_usage(result, prompt: prompt, session_id: session_id)
         end
         status = result["success"] ? 200 : 422
         json_response(res, status, result)
@@ -1451,6 +1454,9 @@ module Clacky
         output_dir   = body["output_dir"].to_s
         output_dir   = @agent_config.default_working_dir || Dir.pwd if output_dir.empty?
 
+        session_id = body["session_id"].to_s
+        session_id = nil if session_id.empty?
+
         result = Clacky::Media::Generator.new(@agent_config).generate_video(
           prompt: prompt,
           aspect_ratio: aspect_ratio,
@@ -1459,7 +1465,7 @@ module Clacky
           image: image
         )
         if result["success"]
-          log_media_usage(result, prompt: prompt)
+          log_media_usage(result, prompt: prompt, session_id: session_id)
         end
         status = result["success"] ? 200 : 422
         json_response(res, status, result)
@@ -1480,13 +1486,16 @@ module Clacky
         output_dir = body["output_dir"].to_s
         output_dir = @agent_config.default_working_dir || Dir.pwd if output_dir.empty?
 
+        session_id = body["session_id"].to_s
+        session_id = nil if session_id.empty?
+
         result = Clacky::Media::Generator.new(@agent_config).generate_speech(
           input: input,
           voice: voice,
           output_dir: output_dir
         )
         if result["success"]
-          log_media_usage(result, prompt: input)
+          log_media_usage(result, prompt: input, session_id: session_id)
         end
         status = result["success"] ? 200 : 422
         json_response(res, status, result)
@@ -1547,7 +1556,7 @@ module Clacky
         json_response(res, 500, { error: e.message })
       end
 
-      private def log_media_usage(result, prompt:)
+      private def log_media_usage(result, prompt:, session_id: nil)
         usage = result["usage"]
         cost  = result["cost_usd"]
         return if usage.nil? && cost.nil?
@@ -1568,6 +1577,20 @@ module Clacky
                else "image"
                end
         Clacky::Logger.info("[Media] #{kind} generated #{parts.join(" ")}")
+
+        require_relative "../billing/billing_store"
+        require_relative "../billing/billing_record"
+        record = Clacky::Billing::BillingRecord.new(
+          session_id:        session_id,
+          model:             result["model"].to_s,
+          prompt_tokens:     usage.is_a?(Hash) ? usage["prompt_tokens"].to_i : 0,
+          completion_tokens: usage.is_a?(Hash) ? usage["completion_tokens"].to_i : 0,
+          cache_read_tokens: usage.is_a?(Hash) ? usage["cache_read_tokens"].to_i : 0,
+          cache_write_tokens: usage.is_a?(Hash) ? usage["cache_write_tokens"].to_i : 0,
+          cost_usd:          cost.to_f,
+          cost_source:       :api
+        )
+        Clacky::Billing::BillingStore.new.append(record)
       end
 
       # GET /api/media/types
