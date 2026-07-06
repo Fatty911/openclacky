@@ -13,7 +13,7 @@ module Clacky
       BILLING_DIR = File.join(Dir.home, ".clacky", "billing")
 
       def initialize(billing_dir: nil)
-        @billing_dir = billing_dir || BILLING_DIR
+        @billing_dir = billing_dir || ENV["CLACKY_BILLING_DIR"] || BILLING_DIR
         ensure_billing_dir
       end
 
