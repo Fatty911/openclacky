@@ -1876,7 +1876,7 @@ body {
   width: 100%;
   max-width: 60rem;
   margin: 0 auto;
-  padding: 3rem 1.5rem 1rem;
+  padding: 5.5rem 1.5rem 1rem;
 }
 .new-session-composer {
   position: relative;
@@ -2026,6 +2026,7 @@ body {
   color: var(--color-accent-primary);
 }
 .agent-card-author {
+  margin-top: 0.25rem;
   font-size: 0.72rem;
   color: var(--color-text-tertiary);
   opacity: 0.8;
@@ -2095,6 +2096,7 @@ body {
   flex-direction: column;
   gap: 0.5rem;
   align-items: flex-start;
+  margin-top: -0.75rem;
 }
 .new-session-advanced-toggle {
   display: inline-flex;
@@ -2111,7 +2113,6 @@ body {
 }
 .new-session-advanced-toggle:hover {
   color: var(--color-text-secondary);
-  background: var(--color-bg-hover);
 }
 .new-session-advanced-caret {
   transition: transform 0.15s;
@@ -12618,6 +12619,42 @@ body.setup-mode[data-theme="dark"] {
   }
   #workspace-overlay.active {
     display: block;
+  }
+
+  /* ── New-session page: mobile ── */
+  #welcome.new-session-page {
+    position: fixed;
+    top: 3rem;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    padding: 0;
+    justify-content: flex-start;
+    height: auto;
+  }
+  .new-session-inner {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .new-session-spacer {
+    display: none;
+  }
+  .new-session-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 1.25rem 1rem 1rem;
+    max-width: 100%;
+  }
+  .new-session-composer {
+    flex: none;
+    position: static;
+    padding: 0.75rem 1rem 1rem;
+    border-top: 1px solid var(--color-border-subtle);
+    background: var(--color-bg-primary);
   }
 }
 
