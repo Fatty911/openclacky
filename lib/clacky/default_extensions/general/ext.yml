@@ -11,8 +11,8 @@ contributes:
     - id: general
       title: General
       title_zh: 通用
-      description: A versatile digital employee living on your computer
-      description_zh: 驻留在你电脑里的多面手数字员工
+      description: Handles your everyday work
+      description_zh: 处理你的日常工作
       order: 1
       prompt: agents/general/system_prompt.md
       avatar: agents/general/avatar.png
