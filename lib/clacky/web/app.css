@@ -221,6 +221,7 @@ html { font-size: 16px; }
   100% { background-position: -200% 0; }
 }
 .skel {
+  display: inline-block;
   border-radius: 6px;
   background: linear-gradient(90deg,
     #e8e8e8 25%,
