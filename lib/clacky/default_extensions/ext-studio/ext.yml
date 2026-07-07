@@ -24,6 +24,7 @@ contributes:
       description_zh: 帮你开发、调试、发布 OpenClacky 扩展的 AI 专家
       order: 5
       prompt: agents/ext-developer/system_prompt.md
+      avatar: agents/ext-developer/avatar.png
       panels: [studio]
       skills: [ext-scaffold, ext-debug, ext-publish]
   skills:

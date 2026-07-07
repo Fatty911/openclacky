@@ -15,4 +15,5 @@ contributes:
       description_zh: AI 编程助手，你的技术合伙人
       order: 2
       prompt: agents/coding/system_prompt.md
+      avatar: agents/coding/avatar.png
       panels: [git/git, time_machine/time_machine]

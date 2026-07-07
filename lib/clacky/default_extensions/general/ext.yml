@@ -15,4 +15,5 @@ contributes:
       description_zh: 驻留在你电脑里的多面手数字员工
       order: 1
       prompt: agents/general/system_prompt.md
+      avatar: agents/general/avatar.png
       panels: [meeting/meeting]

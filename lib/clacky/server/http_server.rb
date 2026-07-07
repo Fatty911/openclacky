@@ -369,6 +369,8 @@ module Clacky
             res.body                  = html
           elsif req.path.start_with?("/agent_ui/")
             self.send(:serve_agent_ui, req, res)
+          elsif req.path.start_with?("/agent_avatar/")
+            self.send(:serve_agent_avatar, req, res)
           elsif req.path.start_with?("/ext_ui/")
             self.send(:serve_ext_ui, req, res)
           else
@@ -1281,6 +1283,42 @@ module Clacky
         return (res.status = 404; res.body = "not found") unless dir && !rel.empty?
 
         serve_static_under(File.join(dir, "webui"), rel, res)
+      end
+
+      # GET /agent_avatar/<id> — serve an agent's avatar image (extension
+      # `avatar` file, or a user agent's avatar.png). Read-only, images only.
+      private def serve_agent_avatar(req, res)
+        id = req.path.delete_prefix("/agent_avatar/").split("/").first.to_s
+        return (res.status = 404; res.body = "not found") if id.empty?
+
+        abs = agent_avatar_path(id)
+        unless abs && File.file?(abs)
+          res.status = 404
+          res.body   = "not found"
+          return
+        end
+
+        ctype = { ".png" => "image/png", ".jpg" => "image/jpeg", ".jpeg" => "image/jpeg",
+                  ".webp" => "image/webp", ".svg" => "image/svg+xml", ".gif" => "image/gif" }[File.extname(abs).downcase]
+        unless ctype
+          res.status = 415
+          res.body   = "unsupported media type"
+          return
+        end
+
+        res.status          = 200
+        res["Content-Type"] = ctype
+        res["Cache-Control"] = "public, max-age=86400"
+        res.body            = File.binread(abs)
+      end
+
+      private def agent_avatar_path(id)
+        unit = Clacky::ExtensionLoader.last_result&.agents&.find { |u| u.id == id }
+        avatar_abs = unit&.spec&.[]("avatar_abs").to_s
+        return avatar_abs unless avatar_abs.empty?
+
+        user_png = File.expand_path("~/.clacky/agents/#{id}/avatar.png")
+        File.file?(user_png) ? user_png : nil
       end
 
       # Read-only static serve of `rel` under `root`, JS/CSS/HTML only, with
