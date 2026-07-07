@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.8] - 2026-07-07
+
+### Added
+- Shell hook `type:rewrite` protocol with `updatedInput` support — hooks can now rewrite the command before execution
+- Support for `AGENTS.md` workspace rules — agent reads project-level rules from AGENTS.md automatically
+- Avatar support in Web UI
+- Open first tab automatically on session start
+
+### Improved
+- New-session page UI humanized with improved layout and discoverability
+- Session bar slot support for extension customization
+- Extension description metadata in ext-studio
+
+### Fixed
+- Mobile new-session page layout uses fixed positioning correctly
+- Weekly stats period now starts from Monday instead of a rolling 7-day window
+- i18n translations updated and UI refreshes immediately on language change
+- Extension market toolbar layout and back button styling
+- Skeleton screen rendering in ext-studio and extension market
+- Trash skeleton screen restored on loading state
+- Media usage logging now passes session_id correctly for image/video generation
+- Billing writes in tests isolated via `CLACKY_BILLING_DIR` env var
+- Meeting panel no longer overrides aside-panel container class
+
 ## [1.3.7] - 2026-07-06
 
 ### Added

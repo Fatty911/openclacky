@@ -8,7 +8,7 @@ module Clacky
     # Builds system prompt by composing layers:
     #   1. Agent-specific system_prompt.md  (role & responsibilities)
     #   2. base_prompt.md                   (universal rules: todo manager, tool usage, etc.)
-    #   3. Project rules                    (.clackyrules / .cursorrules / CLAUDE.md)
+    #   3. Project rules                    (.clackyrules / AGENTS.md / .cursorrules / CLAUDE.md)
     #   4. SOUL.md                          (agent personality — user override or built-in default)
     #   5. USER.md                          (user profile — user override or built-in default)
     #   6. Skills context                   (available skills list)

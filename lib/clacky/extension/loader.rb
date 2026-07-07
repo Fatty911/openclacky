@@ -391,6 +391,10 @@ module Clacky
           return nil
         end
 
+        avatar_rel = spec["avatar"].to_s
+        avatar_abs = avatar_rel.empty? ? "" : File.join(container[:dir], avatar_rel)
+        avatar_abs = "" unless !avatar_abs.empty? && File.file?(avatar_abs)
+
         Unit.new(kind: :agent, id: spec["id"].to_s, ext_id: ext_id,
                  layer: container[:layer], origin: container[:origin],
                  dir: container[:dir],
@@ -399,6 +403,8 @@ module Clacky
                    "title_zh"       => spec["title_zh"].to_s,
                    "prompt"         => spec["prompt"],
                    "prompt_abs"     => prompt_abs,
+                   "avatar"         => avatar_rel,
+                   "avatar_abs"     => avatar_abs,
                    "description"    => spec["description"].to_s,
                    "description_zh" => spec["description_zh"].to_s,
                    "order"          => spec["order"],

@@ -53,11 +53,11 @@ module Clacky
 
     # List all available agent profiles across user + extension layers.
     # Precedence on id collision: user override → extension unit.
-    # @return [Array<Hash>] each: { id:, title:, title_zh:, description:, description_zh:, source:, order:, layer:, author: }
+    # @return [Array<Hash>] each: { id:, title:, title_zh:, description:, description_zh:, source:, order:, layer:, author:, avatar: }
     def self.all
       out = {}
 
-      add = lambda do |id, title, title_zh, description, description_zh, source, order, layer, author|
+      add = lambda do |id, title, title_zh, description, description_zh, source, order, layer, author, avatar|
         next if id.nil? || id.empty?
         out[id] = {
           id: id,
@@ -69,6 +69,7 @@ module Clacky
           order: order,
           layer: layer,
           author: author,
+          avatar: avatar,
         }
       end
 
@@ -77,11 +78,12 @@ module Clacky
         spec = unit.spec || {}
         title = spec["title"].to_s
         title = unit.id if title.empty?
+        avatar = spec["avatar_abs"].to_s.empty? ? nil : "/agent_avatar/#{unit.id}"
         add.call(
           unit.id, title, spec["title_zh"].to_s,
           spec["description"].to_s, spec["description_zh"].to_s,
           "extension", spec["order"], unit.layer.to_s,
-          spec["author"].to_s
+          spec["author"].to_s, avatar
         )
       end
 
@@ -91,11 +93,12 @@ module Clacky
         next if id.start_with?("_")
         next unless File.file?(File.join(path, "profile.yml"))
         meta = read_profile_yml(File.join(path, "profile.yml"))
+        user_avatar = File.file?(File.join(path, "avatar.png")) ? "/agent_avatar/#{id}" : nil
         add.call(
           id, meta["title"] || meta["name"] || id, meta["title_zh"].to_s,
           meta["description"].to_s, meta["description_zh"].to_s,
           "user", meta["order"], "user",
-          meta["author"].to_s.empty? ? "You" : meta["author"].to_s
+          meta["author"].to_s.empty? ? "You" : meta["author"].to_s, user_avatar
         )
       end
 

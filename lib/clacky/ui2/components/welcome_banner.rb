@@ -28,7 +28,7 @@ module Clacky
         TIPS = [
           "[*] Ask questions, edit files, or run commands",
           "[*] Be specific for the best results",
-          "[*] Create .clackyrules to customize interactions",
+          "[*] Create .clackyrules or AGENTS.md to customize interactions",
           "[*] Type /help for more commands"
         ].freeze
 

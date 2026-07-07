@@ -311,10 +311,14 @@
     <!-- New Session page (default landing view; hash: #new or empty) -->
     <div id="welcome" class="centered new-session-page">
       <div class="new-session-inner">
+       <div class="new-session-body">
         <h2 class="new-session-title" data-i18n="sessions.new.title">Start a new session</h2>
         <p class="new-session-subtitle" data-i18n="sessions.new.subtitle">Pick who you want to chat with, then type your first message.</p>
 
         <div id="new-session-agents" class="new-session-agents"></div>
+
+        <!-- Panels the selected agent exposes (filled when an agent is picked) -->
+        <div id="new-session-agent-panels" class="new-session-agent-panels" style="display:none"></div>
 
         <div class="new-session-advanced-wrap">
           <button id="new-session-toggle-advanced" class="new-session-advanced-toggle" type="button" aria-expanded="false">
@@ -356,16 +360,43 @@
             </div>
           </div>
         </div>
+       </div><!-- /.new-session-body -->
 
         <div class="new-session-composer">
-          <textarea id="new-session-input"
-                    class="new-session-textarea"
-                    rows="3"
-                    data-i18n-placeholder="sessions.new.placeholder"
-                    placeholder="Type your first message and press Enter…"></textarea>
-          <div class="new-session-composer-actions">
-            <button id="new-session-send" class="new-session-send" type="button" disabled>
-              <span data-i18n="sessions.new.send">Send</span>
+          <!-- Skill autocomplete dropdown (shown when user types /xxx) -->
+          <div id="ns-skill-autocomplete" class="skill-autocomplete" style="display:none" role="listbox" aria-label="Skills">
+            <div class="skill-ac-header-row">
+              <div class="skill-ac-left">
+                <div class="skill-ac-title" data-i18n="sidebar.skills">Skills</div>
+                <label class="skill-ac-filter-toggle">
+                  <input type="checkbox" id="ns-chk-ac-show-system-skills">
+                  <span class="skill-ac-toggle-track"></span>
+                  <span class="skill-ac-filter-label" data-i18n="skills.filter.showSystemShort">System</span>
+                </label>
+              </div>
+            </div>
+            <div id="ns-skill-autocomplete-list"></div>
+          </div>
+          <!-- Attachment preview strip (hidden when empty) -->
+          <div id="ns-image-preview-strip" style="display:none"></div>
+          <div id="ns-input-bar" class="new-session-input-bar">
+            <input type="file" id="ns-file-input" accept="*/*" multiple style="display:none">
+            <button id="ns-btn-attach" type="button" class="new-session-composer-btn"
+                    title="Attach file (image, pdf, docx, md, tar.gz…) — drag & drop / Ctrl+V also work">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <button id="ns-btn-slash" type="button" class="new-session-composer-btn" title="Insert skill command (/)">
+              <span>/</span>
+            </button>
+            <textarea id="new-session-input"
+                      class="new-session-textarea"
+                      rows="1"
+                      data-i18n-placeholder="chat.input.placeholder"
+                      placeholder="Message… (Enter to send, Shift+Enter for newline)"></textarea>
+            <button id="new-session-send" class="new-session-send" type="button" title="Send message" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
             </button>
           </div>
         </div>
@@ -404,6 +435,8 @@
       <div id="new-message-banner" class="new-message-banner" style="display:none">
         <span data-i18n="chat.newMessageHint">New messages ↓</span>
       </div>
+      <!-- Composer slot: agent-scoped controls above the session info bar. -->
+      <div id="ext-slot-session-composer" class="session-composer" data-slot="session.composer"></div>
       <!-- Session info bar — mirrors CLI bottom status bar -->
       <div id="session-info-bar" style="display:none">
         <!-- Order: status | id | dir | model | mode | tasks | cost -->
@@ -448,8 +481,7 @@
         </span>
       </div>
 
-      <!-- Composer slot: agent-scoped controls just above the input bar. -->
-      <div id="ext-slot-session-composer" class="session-composer" data-slot="session.composer"></div>
+      <!-- Composer slot: moved above the session info bar. -->
       <div id="input-area">
         <div id="ws-disconnect-hint" style="display:none"></div>
         <!-- Skill autocomplete dropdown (shown when user types /xxx) -->

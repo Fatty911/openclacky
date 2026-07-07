@@ -339,7 +339,8 @@ module Clacky
         when :day
           Time.new(now.year, now.month, now.day)
         when :week
-          now - (7 * 24 * 60 * 60)
+          days_since_monday = now.wday == 0 ? 6 : now.wday - 1
+          Time.new(now.year, now.month, now.day) - (days_since_monday * 24 * 60 * 60)
         when :month
           Time.new(now.year, now.month, 1)
         when :year

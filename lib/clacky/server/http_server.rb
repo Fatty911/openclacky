@@ -369,6 +369,8 @@ module Clacky
             res.body                  = html
           elsif req.path.start_with?("/agent_ui/")
             self.send(:serve_agent_ui, req, res)
+          elsif req.path.start_with?("/agent_avatar/")
+            self.send(:serve_agent_avatar, req, res)
           elsif req.path.start_with?("/ext_ui/")
             self.send(:serve_ext_ui, req, res)
           else
@@ -623,6 +625,9 @@ module Clacky
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/skills$})
             session_id = path.sub("/api/sessions/", "").sub("/skills", "")
             api_session_skills(session_id, res)
+          elsif method == "GET" && path.match?(%r{^/api/agents/[^/]+/skills$})
+            agent_id = path[%r{^/api/agents/([^/]+)/skills$}, 1]
+            api_agent_skills(agent_id, res)
           elsif method == "GET" && path.match?(%r{^/api/sessions/[^/]+/git/[a-z]+$})
             session_id = path[%r{^/api/sessions/([^/]+)/git/}, 1]
             action     = path[%r{/git/([a-z]+)$}, 1]
@@ -1061,6 +1066,7 @@ module Clacky
       private def webui_ext_script_tags
         [
           panel_agents_script,
+          ext_contributions_script,
           agent_webui_script_tags,
           container_ext_script_tags,
         ].reject(&:empty?).join("\n")
@@ -1095,6 +1101,36 @@ module Clacky
         return "" if map.empty?
 
         "<script>Clacky.ext.registerPanelAgents(#{map.to_json})</script>"
+      end
+
+      # Inline script mapping agent id => the panels & skills its extension
+      # contributes (straight from ext.yml). Built-in extensions are excluded so
+      # the new-session page only advertises what a third-party agent adds.
+      private def ext_contributions_script
+        map = ext_contributions_map
+        return "" if map.empty?
+
+        "<script>Clacky.ext.registerAgentContributions(#{map.to_json})</script>"
+      end
+
+      private def ext_contributions_map
+        result = Clacky::ExtensionLoader.load_all
+        by_ext = Hash.new { |h, k| h[k] = { "panels" => [], "skills" => [] } }
+        label = lambda do |unit|
+          { "id" => unit.id, "title" => unit.spec["title"] || unit.id, "title_zh" => unit.spec["title_zh"] }
+        end
+
+        result.panels.each { |u| by_ext[u.ext_id]["panels"] << label.call(u) unless u.layer == :builtin }
+        result.skills.each { |u| by_ext[u.ext_id]["skills"] << label.call(u) unless u.layer == :builtin }
+
+        out = {}
+        result.agents.each do |u|
+          next if u.layer == :builtin
+          contrib = by_ext[u.ext_id]
+          next if contrib["panels"].empty? && contrib["skills"].empty?
+          out[u.id] = contrib
+        end
+        out
       end
 
       # panel id => list of agent names allowed to see it. Two sources merge:
@@ -1281,6 +1317,42 @@ module Clacky
         return (res.status = 404; res.body = "not found") unless dir && !rel.empty?
 
         serve_static_under(File.join(dir, "webui"), rel, res)
+      end
+
+      # GET /agent_avatar/<id> — serve an agent's avatar image (extension
+      # `avatar` file, or a user agent's avatar.png). Read-only, images only.
+      private def serve_agent_avatar(req, res)
+        id = req.path.delete_prefix("/agent_avatar/").split("/").first.to_s
+        return (res.status = 404; res.body = "not found") if id.empty?
+
+        abs = agent_avatar_path(id)
+        unless abs && File.file?(abs)
+          res.status = 404
+          res.body   = "not found"
+          return
+        end
+
+        ctype = { ".png" => "image/png", ".jpg" => "image/jpeg", ".jpeg" => "image/jpeg",
+                  ".webp" => "image/webp", ".svg" => "image/svg+xml", ".gif" => "image/gif" }[File.extname(abs).downcase]
+        unless ctype
+          res.status = 415
+          res.body   = "unsupported media type"
+          return
+        end
+
+        res.status          = 200
+        res["Content-Type"] = ctype
+        res["Cache-Control"] = "public, max-age=86400"
+        res.body            = File.binread(abs)
+      end
+
+      private def agent_avatar_path(id)
+        unit = Clacky::ExtensionLoader.last_result&.agents&.find { |u| u.id == id }
+        avatar_abs = unit&.spec&.[]("avatar_abs").to_s
+        return avatar_abs unless avatar_abs.empty?
+
+        user_png = File.expand_path("~/.clacky/agents/#{id}/avatar.png")
+        File.file?(user_png) ? user_png : nil
       end
 
       # Read-only static serve of `rel` under `root`, JS/CSS/HTML only, with
@@ -3940,7 +4012,36 @@ module Clacky
         json_response(res, 200, { skills: skill_data })
       end
 
-      # GET /api/sessions/:id/git/<action> — read-only git info for the session's
+      # GET /api/agents/:id/skills — like api_session_skills but keyed on an
+      # agent id rather than a live session. Used by the New Session page so the
+      # first-message composer can offer slash-command autocomplete before a
+      # session exists.
+      def api_agent_skills(agent_id, res)
+        profile = begin
+          Clacky::AgentProfile.load(agent_id)
+        rescue StandardError
+          nil
+        end
+
+        @skill_loader.load_all
+        skills = @skill_loader.user_invocable_skills
+        skills = skills.select { |s| s.allowed_for_agent?(profile.name) } if profile
+
+        loaded_from = @skill_loader.loaded_from
+        skill_data = skills.map do |skill|
+          {
+            name:           skill.identifier,
+            name_zh:        skill.name_zh,
+            description:    skill.description || skill.context_description,
+            description_zh: skill.description_zh,
+            encrypted:      skill.encrypted?,
+            source_type:    loaded_from[skill.identifier],
+            always_show:    skill.always_show
+          }
+        end
+
+        json_response(res, 200, { skills: skill_data })
+      end
       # working_dir. action ∈ status|diff|log|branches. diff accepts ?file=,
       # log accepts ?limit=.
       def api_session_git(session_id, action, req, res)
