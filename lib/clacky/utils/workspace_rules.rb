@@ -2,10 +2,10 @@
 
 module Clacky
   module Utils
-    # Discovers .clackyrules files in the workspace.
+    # Discovers project rules files in the workspace.
     # Used by both SystemPromptBuilder (rules injection) and WelcomeBanner (UI display).
     module WorkspaceRules
-      RULES_FILENAMES = [".clackyrules", ".cursorrules", "CLAUDE.md"].freeze
+      RULES_FILENAMES = [".clackyrules", "AGENTS.md", ".cursorrules", "CLAUDE.md"].freeze
       SUB_PROJECT_SUMMARY_LINES = 5
 
       # Find the main rules file in the given directory.
