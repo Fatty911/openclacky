@@ -435,6 +435,8 @@
       <div id="new-message-banner" class="new-message-banner" style="display:none">
         <span data-i18n="chat.newMessageHint">New messages ↓</span>
       </div>
+      <!-- Composer slot: agent-scoped controls above the session info bar. -->
+      <div id="ext-slot-session-composer" class="session-composer" data-slot="session.composer"></div>
       <!-- Session info bar — mirrors CLI bottom status bar -->
       <div id="session-info-bar" style="display:none">
         <!-- Order: status | id | dir | model | mode | tasks | cost -->
@@ -479,8 +481,7 @@
         </span>
       </div>
 
-      <!-- Composer slot: agent-scoped controls just above the input bar. -->
-      <div id="ext-slot-session-composer" class="session-composer" data-slot="session.composer"></div>
+      <!-- Composer slot: moved above the session info bar. -->
       <div id="input-area">
         <div id="ws-disconnect-hint" style="display:none"></div>
         <!-- Skill autocomplete dropdown (shown when user types /xxx) -->

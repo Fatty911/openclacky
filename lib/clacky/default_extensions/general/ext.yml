@@ -10,9 +10,9 @@ contributes:
   agents:
     - id: general
       title: General
-      title_zh: 通用
+      title_zh: 日常工作
       description: Handles your everyday work
-      description_zh: 处理你的日常工作
+      description_zh: 帮你打理日常工作，查资料、写东西、整理归纳都行
       order: 1
       prompt: agents/general/system_prompt.md
       avatar: agents/general/avatar.png

@@ -10,7 +10,7 @@ contributes:
   agents:
     - id: coding
       title: Coding
-      title_zh: 编程
+      title_zh: 编程开发
       description: Claude Code-grade coding capability, your technical co-founder
       description_zh: 对齐 Claude Code 的编程能力，你的技术合伙人
       order: 2

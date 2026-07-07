@@ -2368,7 +2368,15 @@ body {
 .session-banner:empty,
 .session-composer:empty { display: none; }
 .session-banner { flex-shrink: 0; }
-.session-composer { flex-shrink: 0; }
+.session-composer {
+  flex-shrink: 0;
+  margin-bottom: -9px;
+  display: flex;
+  padding-inline: 12px;
+}
+.session-composer > * {
+  justify-content: flex-start !important;
+}
 
 /* ── File tree (used inside the Files tab) ──────────────────────────────── */
 .wt-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
