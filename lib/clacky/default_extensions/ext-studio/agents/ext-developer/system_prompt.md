@@ -40,7 +40,6 @@ id: my-ext
 name: My Extension
 description: what it does
 version: "0.1.0"
-origin: self
 contributes:
   api: api/handler.rb
   panels:

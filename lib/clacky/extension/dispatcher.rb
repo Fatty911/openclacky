@@ -97,7 +97,7 @@ module Clacky
           # Handler exited without writing — empty 204
           empty_response(res)
         rescue Clacky::ApiExtension::Halt => halt
-          write_response(res, halt.status, halt.payload, halt.content_type)
+          write_response(res, halt.status, halt.payload, halt.content_type, halt.extra_headers)
         rescue Timeout::Error
           Clacky::Logger.warn("[api_ext:#{klass.ext_id}] Timed out after #{timeout_sec}s on #{route.method.upcase} #{route.pattern}")
           write_json(res, 503, error: "request timed out")
@@ -106,10 +106,11 @@ module Clacky
           write_json(res, 500, error: e.message)
         end
 
-        private def write_response(res, status, body, content_type)
+        private def write_response(res, status, body, content_type, extra_headers = {})
           res.status = status
           res.content_type = content_type
           res["Access-Control-Allow-Origin"] = "*"
+          extra_headers.each { |k, v| res[k] = v }
           res.body = body
         end
 

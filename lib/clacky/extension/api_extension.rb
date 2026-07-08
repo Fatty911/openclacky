@@ -30,13 +30,14 @@ module Clacky
     Route = Struct.new(:method, :pattern, :regex, :param_names, :block, :options, keyword_init: true)
 
     class Halt < StandardError
-      attr_reader :status, :payload, :content_type
+      attr_reader :status, :payload, :content_type, :extra_headers
 
-      def initialize(status, payload, content_type)
+      def initialize(status, payload, content_type, extra_headers: {})
         super("api_ext halt #{status}")
         @status       = status
         @payload      = payload
         @content_type = content_type
+        @extra_headers = extra_headers
       end
     end
 
@@ -199,6 +200,14 @@ module Clacky
 
     def text(str, status: 200)
       raise Halt.new(status, str.to_s, "text/plain; charset=utf-8")
+    end
+
+    def send_data(bytes, content_type:, filename: nil, status: 200)
+      disposition = filename ? "attachment; filename=\"#{filename}\"" : "attachment"
+      raise Halt.new(status, bytes, content_type, extra_headers: {
+        "Content-Disposition" => disposition,
+        "Content-Length"      => bytes.bytesize.to_s
+      })
     end
 
     def error!(message, status: 400, **extra)

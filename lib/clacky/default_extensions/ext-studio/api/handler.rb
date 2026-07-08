@@ -48,12 +48,13 @@ class ExtStudioExt < Clacky::ApiExtension
 
   # POST /api/ext/ext-studio/pack
   # body: { ext_id }
-  # Packs a local container into a zip (into a temp dir) and reports its path.
+  # Packs a local container and streams the zip back as a file download.
   post "/pack" do
     ext_id = require_ext_id!
     Dir.mktmpdir("clacky-ext-studio-pack") do |tmp|
-      res = Clacky::ExtensionPackager.pack(ext_id, out_dir: tmp)
-      json(ok: true, ext_id: res.ext_id, path: res.path)
+      res      = Clacky::ExtensionPackager.pack(ext_id, out_dir: tmp)
+      zip_data = File.binread(res.path)
+      send_data(zip_data, content_type: "application/zip", filename: "#{res.ext_id}.zip")
     end
   rescue Clacky::ExtensionPackager::Error => e
     error!(e.message, status: 422)
