@@ -5,7 +5,6 @@ version: "0.1.0"
 author: OpenClacky
 homepage: https://www.openclacky.com
 license: MIT
-origin: self
 contributes:
   panels:
     - id: time_machine
