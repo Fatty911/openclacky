@@ -44,15 +44,6 @@ RSpec.describe Clacky::ExtensionPackager do
         .to raise_error(described_class::Error, /no container found/)
     end
 
-    it "refuses to pack a marketplace-origin container" do
-      dir = scaffold("paid")
-      manifest = File.join(dir, "ext.yml")
-      File.write(manifest, File.read(manifest).sub("origin: self", "origin: marketplace"))
-
-      expect { described_class.pack("paid", source_dir: local, out_dir: out) }
-        .to raise_error(described_class::Error, /origin=marketplace/)
-    end
-
     it "refuses to pack a container carrying an encrypted skill" do
       dir = scaffold("enc")
       FileUtils.mkdir_p(File.join(dir, "skills", "secret"))

@@ -596,7 +596,7 @@ module Clacky
     #
     # Returns { success: true, extension: {...} } or
     #         { success: false, error: "...", already_exists: Boolean }.
-    def upload_extension!(ext_id, zip_data, force: false, status: nil, changelog: nil)
+    def upload_extension!(ext_id, zip_data, force: false, status: nil, changelog: nil, origin: 'marketplace')
       identity = Clacky::Identity.load
       return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
 
@@ -607,6 +607,7 @@ module Clacky
              end
 
       fields = { "device_token" => identity.device_token }
+      fields["origin"]    = origin.to_s      if origin
       fields["status"]    = status.to_s    if status
       fields["changelog"] = changelog.to_s if changelog
 

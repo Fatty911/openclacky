@@ -540,6 +540,7 @@ module Clacky
         when ["GET",    "/api/store/skills"]          then api_store_skills(res)
         when ["GET",    "/api/store/extensions"]      then api_store_extensions(req, res)
         when ["GET",    "/api/store/extension"]       then api_store_extension_detail(req, res)
+        when ["POST",   "/api/store/extension/install"]  then api_store_extension_install(req, res)
         when ["POST",   "/api/store/extension/disable"] then api_store_extension_disable(req, res)
         when ["POST",   "/api/store/extension/enable"]  then api_store_extension_enable(req, res)
         when ["DELETE", "/api/store/extension"]         then api_store_extension_uninstall(req, res)
@@ -2419,6 +2420,25 @@ module Clacky
       end
 
       # DELETE /api/store/extension   body: { id: <slug> }
+      def api_store_extension_install(req, res)
+        body         = parse_json_body(req)
+        download_url = body["download_url"].to_s.strip
+        name         = body["name"].to_s.strip
+
+        if download_url.empty?
+          json_response(res, 400, { ok: false, error: "Missing download_url." })
+          return
+        end
+
+        Clacky::ExtensionPackager.install(download_url, force: true)
+        Clacky::ExtensionLoader.invalidate_cache!
+        json_response(res, 200, { ok: true, name: name })
+      rescue Clacky::ExtensionPackager::Error => e
+        json_response(res, 422, { ok: false, error: e.message })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
       def api_store_extension_uninstall(req, res)
         id = parse_json_body(req)["id"].to_s
         container = extension_container(id)

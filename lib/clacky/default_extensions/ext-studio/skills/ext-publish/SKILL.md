@@ -11,8 +11,7 @@ it's live.
 ## Before publishing
 
 - The extension must live in the **local** layer (`~/.clacky/ext/local/<id>/`). Only
-  local containers can be packed. Marketplace-origin and encrypted (`SKILL.md.enc`)
-  containers are rejected.
+  local containers can be packed. Encrypted (`SKILL.md.enc`) containers are rejected.
 - Publishing requires an **activated user license** — it proves creator identity, and
   the platform attributes the extension to that account. If activation is missing, tell
   the user to activate first; don't try to work around it.
