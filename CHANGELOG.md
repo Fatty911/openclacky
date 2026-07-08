@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+
+## [1.3.9] - 2026-07-08
+
+### Added
+- Installed filter tab in extension marketplace toolbar — quickly view only installed extensions
+- Extension detail page UI improvements with better uninstall behavior
+- `send_data` helper for API extensions to return binary file responses
+
+### Improved
+- Extension marketplace upload flow reworked — `origin` field removed, cleaner package structure
+- Publish modal redesigned with meta block, improved layout, size, and animation
+- Debug panel verify result now shown inline in action bar with auto-hide and friendly hint
+
+### Fixed
+- Zero-byte zip download when exporting extensions — binary responses now handled correctly
+- Filter tab bottom padding adjusted for better underline spacing
+- New-session advanced panel margin-top adjusted
+- Debug panel detail no longer shows origin field
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.3.8] - 2026-07-07
