@@ -54,11 +54,7 @@ class ExtStudioExt < Clacky::ApiExtension
     Dir.mktmpdir("clacky-ext-studio-pack") do |tmp|
       res      = Clacky::ExtensionPackager.pack(ext_id, out_dir: tmp)
       zip_data = File.binread(res.path)
-      [200, {
-        "Content-Type"        => "application/zip",
-        "Content-Disposition" => "attachment; filename=\"#{res.ext_id}.zip\"",
-        "Content-Length"      => zip_data.bytesize.to_s
-      }, [zip_data]]
+      send_data(zip_data, content_type: "application/zip", filename: "#{res.ext_id}.zip")
     end
   rescue Clacky::ExtensionPackager::Error => e
     error!(e.message, status: 422)
