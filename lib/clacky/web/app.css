@@ -7081,11 +7081,43 @@ body {
 .extensions-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+.extensions-toolbar-right {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
+}
+.extensions-filter-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+.extensions-filter-tab {
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.25rem 0.875rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+.extensions-filter-tab:hover {
+  color: var(--color-text-primary);
+}
+.extensions-filter-tab-active {
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-accent, #6366f1);
 }
 .extensions-search {
   flex: 1;
-  min-width: 0;
+  min-width: 15rem;
   font-size: 0.8125rem;
   padding: 0.4375rem 0.75rem;
   border-radius: 6px;
