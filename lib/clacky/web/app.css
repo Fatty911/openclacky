@@ -2005,6 +2005,11 @@ body {
   font-size: 0.78125rem;
   color: var(--color-text-tertiary);
   line-height: 1.4;
+  flex: 1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .agent-card-badge {
   position: absolute;
@@ -2024,7 +2029,6 @@ body {
   color: var(--color-accent-primary);
 }
 .agent-card-author {
-  margin-top: 0.25rem;
   font-size: 0.72rem;
   color: var(--color-text-tertiary);
   opacity: 0.8;
