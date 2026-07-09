@@ -80,7 +80,7 @@ RSpec.describe Clacky::Client do
     it "raises AgentError on 401" do
       resp = fake_response(status: 401, body: '{"error":{"message":"Unauthorized"}}')
       expect { client.send(:raise_error, resp) }
-        .to raise_error(Clacky::AgentError, /Invalid API key/)
+        .to raise_error(Clacky::AgentError, /API key is invalid/)
     end
 
     it "raises BadRequestError on 400" do
