@@ -117,6 +117,7 @@ module Clacky
       WEB_ROOT = File.expand_path("../web", __dir__)
       EXCHANGE_RATE_PRIMARY_BASE_URL = "https://open.er-api.com/v6/latest"
       EXCHANGE_RATE_FALLBACK_URL = "https://api.frankfurter.app/latest"
+      OSS_CDN_BASE = "https://oss.1024code.com/openclacky"
 
       # Default SOUL.md written when the user skips the onboard conversation.
       # A richer version is created by the Agent during the soul_setup phase.
@@ -2899,7 +2900,7 @@ module Clacky
         require "net/http"
         require "uri"
 
-        oss_base   = "https://oss.1024code.com/openclacky"
+        oss_base   = OSS_CDN_BASE
         latest_url = "#{oss_base}/latest.txt"
 
         Clacky::Logger.info("[Upgrade] Non-official source — fetching latest version from OSS CDN")
@@ -3071,11 +3072,12 @@ module Clacky
       end
 
       # Query the latest openclacky version.
-      # Strategy: try RubyGems official REST API first (most accurate, not affected by mirror lag),
-      # then fall back to `gem list -r` (respects user's configured gem source).
-      # Uses Terminal (PTY + login shell) so rbenv/mise shims and gem mirrors work correctly.
+      # Strategy: OSS CDN latest.txt first (fast, CDN-accelerated), then RubyGems API,
+      # then fall back to `gem list -r` as a last resort.
       private def fetch_latest_version_from_gem
-        fetch_latest_version_from_rubygems_api || fetch_latest_version_from_gem_command
+        fetch_oss_latest_version("#{OSS_CDN_BASE}/latest.txt") ||
+          fetch_latest_version_from_rubygems_api ||
+          fetch_latest_version_from_gem_command
       end
 
       # Try RubyGems official REST API — fast and always up-to-date.
