@@ -539,7 +539,8 @@ module Clacky
         when ["POST",   "/api/onboard/complete"]  then api_onboard_complete(req, res)
         when ["POST",   "/api/onboard/skip-soul"] then api_onboard_skip_soul(req, res)
         when ["GET",    "/api/store/skills"]          then api_store_skills(res)
-        when ["GET",    "/api/store/extensions"]      then api_store_extensions(req, res)
+        when ["GET",    "/api/store/extensions"]          then api_store_extensions(req, res)
+        when ["GET",    "/api/store/extensions/installed"] then api_store_extensions_installed(res)
         when ["GET",    "/api/store/extension"]       then api_store_extension_detail(req, res)
         when ["POST",   "/api/store/extension/install"]  then api_store_extension_install(req, res)
         when ["POST",   "/api/store/extension/disable"] then api_store_extension_disable(req, res)
@@ -2348,6 +2349,65 @@ module Clacky
         end
       end
 
+      # GET /api/store/extensions/installed
+      #
+      # Returns all locally installed extensions (all layers: builtin, installed,
+      # local) regardless of whether they are still listed on the marketplace.
+      def api_store_extensions_installed(res)
+        result   = Clacky::ExtensionLoader.load_all
+        disabled = Clacky::ExtensionLoader.disabled_ids
+
+        local_entries = Array(result&.containers).filter_map do |ext_id, container|
+          next unless container[:layer] == :installed
+
+          [ext_id, container]
+        end.to_h
+
+        market_by_slug = fetch_batch_market_data(local_entries.keys)
+
+        extensions = local_entries.map do |ext_id, container|
+          market = market_by_slug[ext_id]
+          {
+            "id"          => ext_id,
+            "name"        => market ? (market["name"] || ext_id) : ext_id,
+            "name_zh"     => market&.dig("name_zh"),
+            "name_en"     => market&.dig("name_en"),
+            "slug"        => ext_id,
+            "version"     => market ? (market["version"] || container[:version]) : container[:version],
+            "description" => market&.dig("description"),
+            "icon_url"    => market&.dig("icon_url"),
+            "units"       => market&.dig("units"),
+            "homepage"    => market ? (market["homepage"] || "") : "",
+            "origin"      => market ? (market["origin"] || container[:origin]) : container[:origin],
+            "hub_active"  => market&.dig("hub_active"),
+            "unlisted"    => market.nil?,
+            "layer"       => container[:layer].to_s,
+            "installed"   => true,
+            "removable"   => true,
+            "disabled"    => disabled.include?(ext_id),
+          }
+        end
+
+        json_response(res, 200, { ok: true, extensions: extensions })
+      rescue StandardError => e
+        json_response(res, 500, { ok: false, error: e.message })
+      end
+
+      private def fetch_batch_market_data(slugs)
+        return {} if slugs.empty?
+
+        client = Clacky::PlatformHttpClient.new
+        slugs.each_slice(50).each_with_object({}) do |batch, result|
+          ids_param = batch.join(",")
+          response  = client.get("/api/v1/extensions/batch?ids=#{ids_param}")
+          next unless response[:success]
+
+          Array(response.dig(:data, "extensions")).each { |ext| result[ext["name"]] = ext }
+        end
+      rescue StandardError
+        {}
+      end
+
       # Slugs of every extension container currently loaded (any layer), used to
       # flag "installed" on the public marketplace catalog.
       def installed_extension_slugs
@@ -2382,7 +2442,31 @@ module Clacky
           )
           json_response(res, 200, { ok: true, extension: ext })
         else
-          json_response(res, 404, { ok: false, error: result[:error] || "Not found" })
+          container = extension_container(id)
+          if container && container[:layer] == :installed
+            market = fetch_batch_market_data([id])[id]
+            ext = {
+              "id"          => id,
+              "name"        => market ? (market["name"] || id) : id,
+              "name_zh"     => market&.dig("name_zh"),
+              "name_en"     => market&.dig("name_en"),
+              "slug"        => id,
+              "version"     => market ? (market["version"] || container[:version]) : container[:version],
+              "description" => market&.dig("description"),
+              "icon_url"    => market&.dig("icon_url"),
+              "units"       => market&.dig("units"),
+              "homepage"    => market ? (market["homepage"] || "") : "",
+              "origin"      => market ? (market["origin"] || container[:origin]) : container[:origin],
+              "hub_active"  => market&.dig("hub_active"),
+              "unlisted"    => market.nil?,
+              "installed"   => true,
+              "removable"   => true,
+              "disabled"    => container[:disabled] == true,
+            }
+            json_response(res, 200, { ok: true, extension: ext })
+          else
+            json_response(res, 404, { ok: false, error: result[:error] || "Not found" })
+          end
         end
       end
 
