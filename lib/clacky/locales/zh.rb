@@ -5,7 +5,7 @@ module Clacky
     ZH = {
       "llm.error.insufficient_credit"   => "账户余额不足，请前往控制台充值后继续使用",
       "llm.error.rate_limit_400"        => "请求频率过高或服务暂时不可用，正在重试...",
-      "llm.error.invalid_api_key"       => "API 密钥无效，请检查配置",
+      "llm.error.invalid_api_key"       => "API Key 无效或已过期，请到设置中重新配置",
       "llm.error.403.model_not_allowed" => "当前模型不支持免费试用，请升级套餐或切换其他模型",
       "llm.error.403.api_key_revoked"   => "API 密钥已被撤销，请前往控制台重新生成",
       "llm.error.403.api_key_expired"   => "API 密钥已过期，请前往控制台重新生成",
