@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [1.3.10] - 2026-07-09
+
+### Added
+- Extension author shown inline in title row on extension cards
+- Version input in publish modal — writes back to `ext.yml`, shows friendly Chinese error on version conflict
+- Local extensions now included in the installed extensions list
+
+### Improved
+- Published extensions list in publish panel — better style and UX
+- Publishing state, success label, and done button added to publish modal flow
+- OSS CDN prioritized for latest version check (faster upgrade detection)
+
+### Fixed
+- Agent card description clamped to 2 lines; author hidden for built-in agents
+- New-session scrollbar centering — use padding calc instead of max-width
+- `file://` links with spaces and non-ASCII paths now render correctly (#350)
+- Invalid API key error message improved to cover expired key case
+- Local extension card in ext-studio now correctly appends action buttons
+- Navigate back to list when extension detail fails to load
+- Page reloads correctly after install/enable/disable/uninstall extension
+- Enriched installed extensions with market data; shows unlisted badge
+
 ## [1.3.9] - 2026-07-08
 
 ### Added

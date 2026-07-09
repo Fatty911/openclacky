@@ -129,7 +129,33 @@ class ExtStudioExt < Clacky::ApiExtension
     json(ok: true, ext_id: ext_id)
   end
 
-  # POST /api/ext/ext-studio/develop
+  # POST /api/ext/ext-studio/set_version
+  # body: { ext_id, version }
+  # Writes the new version string back to the local ext.yml.
+  post "/set_version" do
+    ext_id  = require_ext_id!
+    version = presence(json_body["version"])
+    error!("version required", status: 422) unless version
+
+    result  = Clacky::ExtensionLoader.load_all(force: false)
+    container = Array(result.containers).find { |id, _| id == ext_id }&.last
+    error!("extension not found: #{ext_id}", status: 404) unless container
+
+    yml_path = File.join(container[:dir], "ext.yml")
+    error!("ext.yml not found", status: 404) unless File.exist?(yml_path)
+
+    content = File.read(yml_path)
+    if content =~ /^version:/
+      content = content.sub(/^version:.*$/, "version: #{version}")
+    else
+      content = content.rstrip + "\nversion: #{version}\n"
+    end
+    File.write(yml_path, content)
+
+    json(ok: true, ext_id: ext_id, version: version)
+  end
+
+
   # body: { idea? }
   # Spawns a session bound to the ext-developer agent, optionally seeded with
   # the user's idea as the first task — the "let AI build it for me" entry.
