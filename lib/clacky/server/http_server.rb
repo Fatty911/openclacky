@@ -2358,7 +2358,7 @@ module Clacky
         disabled = Clacky::ExtensionLoader.disabled_ids
 
         local_entries = Array(result&.containers).filter_map do |ext_id, container|
-          next unless %i[installed local].include?(container[:layer])
+          next unless container[:layer] == :installed
 
           [ext_id, container]
         end.to_h
@@ -2383,7 +2383,7 @@ module Clacky
             "unlisted"    => market.nil?,
             "layer"       => container[:layer].to_s,
             "installed"   => true,
-            "removable"   => container[:layer] == :installed,
+            "removable"   => true,
             "disabled"    => disabled.include?(ext_id),
           }
         end
