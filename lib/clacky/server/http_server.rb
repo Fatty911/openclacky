@@ -2334,10 +2334,14 @@ module Clacky
         result = brand.search_extensions!(query: req.query["q"], sort: req.query["sort"])
 
         if result[:success]
-          installed = installed_extension_slugs
+          installed = installed_extension_containers
           extensions = Array(result[:extensions]).map do |ext|
             slug = ext["name"] || ext[:name] || ext["slug"] || ext[:slug]
-            ext.merge("installed" => installed.include?(slug))
+            container = installed[slug]
+            ext.merge(
+              "installed"         => !container.nil?,
+              "installed_version" => container&.dig(:version)
+            )
           end
           json_response(res, 200, { ok: true, extensions: extensions })
         else
@@ -2368,24 +2372,25 @@ module Clacky
         extensions = local_entries.map do |ext_id, container|
           market = market_by_slug[ext_id]
           {
-            "id"          => ext_id,
-            "name"        => market ? (market["name"] || ext_id) : ext_id,
-            "name_zh"     => market&.dig("name_zh"),
-            "name_en"     => market&.dig("name_en"),
-            "slug"        => ext_id,
-            "version"     => market ? (market["version"] || container[:version]) : container[:version],
-            "description" => market&.dig("description"),
-            "author"      => market&.dig("author"),
-            "icon_url"    => market&.dig("icon_url"),
-            "units"       => market&.dig("units"),
-            "homepage"    => market ? (market["homepage"] || "") : "",
-            "origin"      => market ? (market["origin"] || container[:origin]) : container[:origin],
-            "hub_active"  => market&.dig("hub_active"),
-            "unlisted"    => market.nil?,
-            "layer"       => container[:layer].to_s,
-            "installed"   => true,
-            "removable"   => true,
-            "disabled"    => disabled.include?(ext_id),
+            "id"                => ext_id,
+            "name"              => market ? (market["name"] || ext_id) : ext_id,
+            "name_zh"           => market&.dig("name_zh"),
+            "name_en"           => market&.dig("name_en"),
+            "slug"              => ext_id,
+            "version"           => market ? (market["version"] || container[:version]) : container[:version],
+            "installed_version" => container[:version],
+            "description"       => market&.dig("description"),
+            "author"            => market&.dig("author"),
+            "icon_url"          => market&.dig("icon_url"),
+            "units"             => market&.dig("units"),
+            "homepage"          => market ? (market["homepage"] || "") : "",
+            "origin"            => market ? (market["origin"] || container[:origin]) : container[:origin],
+            "hub_active"        => market&.dig("hub_active"),
+            "unlisted"          => market.nil?,
+            "layer"             => container[:layer].to_s,
+            "installed"         => true,
+            "removable"         => true,
+            "disabled"          => disabled.include?(ext_id),
           }
         end
 
@@ -2418,6 +2423,13 @@ module Clacky
         Set.new
       end
 
+      def installed_extension_containers
+        result = Clacky::ExtensionLoader.load_all
+        Array(result&.containers).filter_map { |id, c| [id, c] if c[:layer] == :installed }.to_h
+      rescue StandardError
+        {}
+      end
+
       # GET /api/store/extension?id=<slug-or-id>
       #
       # Public detail for a single marketplace extension (contributes + version
@@ -2437,9 +2449,10 @@ module Clacky
           slug = ext["name"] || ext[:name] || ext["slug"] || ext[:slug]
           container = extension_container(slug)
           ext  = ext.merge(
-            "installed" => !container.nil?,
-            "removable" => container && container[:layer] == :installed,
-            "disabled"  => container ? container[:disabled] == true : false
+            "installed"         => !container.nil?,
+            "installed_version" => container&.dig(:version),
+            "removable"         => container && container[:layer] == :installed,
+            "disabled"          => container ? container[:disabled] == true : false
           )
           json_response(res, 200, { ok: true, extension: ext })
         else
@@ -2447,23 +2460,24 @@ module Clacky
           if container && container[:layer] == :installed
             market = fetch_batch_market_data([id])[id]
             ext = {
-              "id"          => id,
-              "name"        => market ? (market["name"] || id) : id,
-              "name_zh"     => market&.dig("name_zh"),
-              "name_en"     => market&.dig("name_en"),
-              "slug"        => id,
-              "version"     => market ? (market["version"] || container[:version]) : container[:version],
-              "description" => market&.dig("description"),
-              "author"      => market&.dig("author"),
-              "icon_url"    => market&.dig("icon_url"),
-              "units"       => market&.dig("units"),
-              "homepage"    => market ? (market["homepage"] || "") : "",
-              "origin"      => market ? (market["origin"] || container[:origin]) : container[:origin],
-              "hub_active"  => market&.dig("hub_active"),
-              "unlisted"    => market.nil?,
-              "installed"   => true,
-              "removable"   => true,
-              "disabled"    => container[:disabled] == true,
+              "id"                => id,
+              "name"              => market ? (market["name"] || id) : id,
+              "name_zh"           => market&.dig("name_zh"),
+              "name_en"           => market&.dig("name_en"),
+              "slug"              => id,
+              "version"           => market ? (market["version"] || container[:version]) : container[:version],
+              "installed_version" => container[:version],
+              "description"       => market&.dig("description"),
+              "author"            => market&.dig("author"),
+              "icon_url"          => market&.dig("icon_url"),
+              "units"             => market&.dig("units"),
+              "homepage"          => market ? (market["homepage"] || "") : "",
+              "origin"            => market ? (market["origin"] || container[:origin]) : container[:origin],
+              "hub_active"        => market&.dig("hub_active"),
+              "unlisted"          => market.nil?,
+              "installed"         => true,
+              "removable"         => true,
+              "disabled"          => container[:disabled] == true,
             }
             json_response(res, 200, { ok: true, extension: ext })
           else
