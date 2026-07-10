@@ -92,7 +92,8 @@ module Clacky
       instance = new(data)
       instance.ensure_device_id!
       instance
-    rescue StandardError
+    rescue StandardError => e
+      Clacky::Logger.error("[Brand] load failed, falling back to empty config (will overwrite brand.yml): #{e.class}: #{e.message}")
       instance = new({})
       instance.ensure_device_id!
       instance
@@ -101,6 +102,7 @@ module Clacky
     def ensure_device_id!
       return if @device_id && !@device_id.strip.empty?
 
+      Clacky::Logger.warn("[Brand] regenerating device_id (previous was blank; brand.yml may have been reset or corrupted)")
       @device_id = generate_device_id
       save
     end
@@ -161,6 +163,7 @@ module Clacky
     # Save current state to ~/.clacky/brand.yml
     def save
       FileUtils.mkdir_p(CONFIG_DIR)
+      Clacky::Logger.debug("[Brand] save: product_name=#{@product_name.inspect} license_key?=#{!@license_key.nil? && !@license_key.to_s.empty?} device_id?=#{!@device_id.nil? && !@device_id.to_s.empty?}")
       File.write(BRAND_FILE, to_yaml)
       FileUtils.chmod(0o600, BRAND_FILE)
     end
