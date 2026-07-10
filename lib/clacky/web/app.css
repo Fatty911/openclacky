@@ -7249,6 +7249,11 @@ body {
   color: var(--color-text-muted);
   font-weight: 400;
 }
+.extension-installs {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
 .extension-meta {
   display: flex;
   align-items: center;

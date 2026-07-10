@@ -2386,6 +2386,7 @@ module Clacky
             "homepage"          => market ? (market["homepage"] || "") : "",
             "origin"            => market ? (market["origin"] || container[:origin]) : container[:origin],
             "hub_active"        => market&.dig("hub_active"),
+            "download_count"    => market&.dig("download_count").to_i,
             "unlisted"          => market.nil?,
             "layer"             => container[:layer].to_s,
             "installed"         => true,
@@ -2533,6 +2534,7 @@ module Clacky
 
         Clacky::ExtensionPackager.install(download_url, force: true)
         Clacky::ExtensionLoader.invalidate_cache!
+        Clacky::Telemetry.extension_install!(name) unless name.empty?
         json_response(res, 200, { ok: true, name: name })
       rescue Clacky::ExtensionPackager::Error => e
         json_response(res, 422, { ok: false, error: e.message })
