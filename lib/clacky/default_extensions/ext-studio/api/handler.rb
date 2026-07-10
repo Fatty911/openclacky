@@ -120,6 +120,26 @@ class ExtStudioExt < Clacky::ApiExtension
     json(extensions: exts)
   end
 
+  # DELETE /api/ext/ext-studio/local
+  # body: { ext_id }
+  # Permanently removes a local extension directory. Only allowed for
+  # unpublished extensions (caller must check; server enforces dir existence).
+  delete "/local" do
+    ext_id = require_ext_id!
+
+    result    = Clacky::ExtensionLoader.load_all(force: false)
+    container = Array(result.containers).find { |id, _| id == ext_id }&.last
+    error!("extension not found: #{ext_id}", status: 404) unless container
+    error!("not a local extension", status: 422) unless container[:layer] == :local
+
+    dir = container[:dir]
+    error!("extension directory not found", status: 404) unless Dir.exist?(dir)
+
+    FileUtils.rm_rf(dir)
+    Clacky::ExtensionLoader.load_all(force: true)
+    json(ok: true, ext_id: ext_id)
+  end
+
   # POST /api/ext/ext-studio/unpublish
   # body: { ext_id }
   post "/unpublish" do

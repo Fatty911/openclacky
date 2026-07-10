@@ -91,6 +91,15 @@ module Clacky
         fire_and_forget("/api/v1/telemetry/share", payload.compact)
       end
 
+      # Called after a marketplace extension is successfully installed.
+      # Increments the extension's download_count on the platform.
+      def extension_install!(slug)
+        return unless enabled?
+        return if slug.to_s.strip.empty?
+
+        fire_and_forget("/api/v1/telemetry/extension_install", { slug: slug })
+      end
+
       # ── private helpers ────────────────────────────────────────────────
 
       private def enabled?
