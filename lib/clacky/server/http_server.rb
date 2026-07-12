@@ -477,8 +477,10 @@ module Clacky
         elsif path.start_with?("/api/backup/download") || path == "/api/backup/run" || path == "/api/backup/restore"
           # Building/extracting a tar.gz of ~/.clacky can take a while.
           120
+        elsif path == "/api/store/extension/install"
+          300
         else
-          10
+          30
         end
         Timeout.timeout(timeout_sec) do
           _dispatch_rest(req, res)
