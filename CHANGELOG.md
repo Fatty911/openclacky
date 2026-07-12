@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [1.3.11] - 2026-07-12
+
+### Added
+- Delete button for unpublished local extensions in ext-studio
+- Extension install count shown in marketplace
+- Update badge and installed version shown in marketplace list
+
+### Improved
+- Extension version history styled with markdown rendering
+
+### Fixed
+- Preserve user data on extension update (overwrite instead of replace)
+- Extension install timeout increased to 300s (was too short for large extensions)
+- Installed tab search and loading state in extension store
+- Prevent license loss from non-atomic brand.yml writes
+- Extension detail page content no longer cut off or unscrollable
+- Extension author label position corrected to end of title row
+
 ## [1.3.10] - 2026-07-09
 
 ### Added
