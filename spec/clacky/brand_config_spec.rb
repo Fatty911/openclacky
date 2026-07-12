@@ -78,6 +78,54 @@ RSpec.describe Clacky::BrandConfig do
           expect(config.branded?).to be false
         end
       end
+
+      it "does NOT overwrite brand.yml when the file is corrupt" do
+        with_temp_brand_file do |brand_file|
+          corrupt = "--- :\n bad: [yaml"
+          File.write(brand_file, corrupt)
+          described_class.load
+          expect(File.read(brand_file)).to eq(corrupt)
+        end
+      end
+
+      it "does not write to disk from the rescue fallback (no overwrite loop)" do
+        with_temp_brand_file do |brand_file|
+          File.write(brand_file, "--- :\n bad: [yaml")
+          expect_any_instance_of(described_class).not_to receive(:save)
+          config = described_class.load
+          expect(config.device_id).not_to be_nil
+        end
+      end
+    end
+  end
+
+  # ── #save ─────────────────────────────────────────────────────────────────
+
+  describe "#save" do
+    it "writes atomically without leaving temp files behind" do
+      with_temp_brand_file do |brand_file|
+        config = described_class.new("product_name" => "JohnAI", "license_key" => "KEY")
+        config.save
+        dir = File.dirname(brand_file)
+        expect(File.exist?(brand_file)).to be true
+        expect(Dir.glob(File.join(dir, "*.tmp"))).to be_empty
+      end
+    end
+
+    it "persists the config so it round-trips through load" do
+      with_temp_brand_file do
+        described_class.new("product_name" => "JohnAI", "license_key" => "KEY").save
+        reloaded = described_class.load
+        expect(reloaded.product_name).to eq("JohnAI")
+        expect(reloaded.license_key).to eq("KEY")
+      end
+    end
+
+    it "writes the file with 0600 permissions" do
+      with_temp_brand_file do |brand_file|
+        described_class.new("product_name" => "JohnAI").save
+        expect(File.stat(brand_file).mode & 0o777).to eq(0o600)
+      end
     end
   end
 
