@@ -66,9 +66,8 @@ module Clacky
             raise Error, "extension #{ext_id.inspect} already installed at #{target} (pass force: true to overwrite)"
           end
 
-          FileUtils.mkdir_p(installed_dir)
-          FileUtils.rm_rf(target) if Dir.exist?(target)
-          FileUtils.cp_r(container_src, target)
+          FileUtils.mkdir_p(target)
+          FileUtils.cp_r(Dir.glob("#{container_src}/*"), target)
 
           Clacky::ExtensionLoader.invalidate_cache!
           units = verify_installed(ext_id, installed_dir)
