@@ -7356,26 +7356,67 @@ body {
   margin-top: 0.125rem;
 }
 .extension-version-item {
-  padding: 0.625rem 0.875rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--color-border-primary);
 }
 .extension-version-item:last-child { border-bottom: none; }
 .extension-version-row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.5rem;
+}
+.extension-version-item:has(.extension-version-notes) .extension-version-row {
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--color-border-primary);
+}
+.extension-version-row .extension-version {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  background: none;
+  padding: 0;
+  border-radius: 0;
 }
 .extension-version-date {
   font-size: 0.6875rem;
   color: var(--color-text-muted);
 }
 .extension-version-notes {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   color: var(--color-text-secondary);
-  line-height: 1.5;
-  margin-top: 0.25rem;
-  white-space: pre-wrap;
+  line-height: 1.6;
+  margin-top: 0.5rem;
 }
+.extension-version-notes h1,
+.extension-version-notes h2,
+.extension-version-notes h3 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0.75rem 0 0.25rem;
+}
+.extension-version-notes h1 {
+  font-size: 0.9375rem;
+}
+.extension-version-notes h1:first-child,
+.extension-version-notes h2:first-child,
+.extension-version-notes h3:first-child {
+  margin-top: 0;
+}
+.extension-version-notes ul,
+.extension-version-notes ol {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+.extension-version-notes li {
+  margin: 0.1rem 0;
+}
+.extension-version-notes p {
+  margin: 0.25rem 0;
+}
+.extension-version-notes p:first-child { margin-top: 0; }
+.extension-version-notes p:last-child { margin-bottom: 0; }
 .extension-detail-loading { display: flex; flex-direction: column; gap: 0.5rem; }
 
 .extension-detail-actions {
