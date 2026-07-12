@@ -93,18 +93,24 @@ module Clacky
       instance.ensure_device_id!
       instance
     rescue StandardError => e
-      Clacky::Logger.error("[Brand] load failed, falling back to empty config (will overwrite brand.yml): #{e.class}: #{e.message}")
+      # A read/parse failure here is almost always a transient corruption (e.g. a
+      # concurrent write caught mid-truncate). Do NOT touch brand.yml — overwriting
+      # it with an empty config would permanently wipe the license, and even moving
+      # it aside could lose a file that self-heals a few milliseconds later. Leave
+      # the on-disk file untouched and return an in-memory-only config (device_id
+      # generated but never saved); the next load usually succeeds.
+      Clacky::Logger.error("[Brand] load failed, using in-memory fallback WITHOUT touching brand.yml: #{e.class}: #{e.message}")
       instance = new({})
-      instance.ensure_device_id!
+      instance.ensure_device_id!(persist: false)
       instance
     end
 
-    def ensure_device_id!
+    def ensure_device_id!(persist: true)
       return if @device_id && !@device_id.strip.empty?
 
       Clacky::Logger.warn("[Brand] regenerating device_id (previous was blank; brand.yml may have been reset or corrupted)")
       @device_id = generate_device_id
-      save
+      save if persist
     end
 
     # Returns true when this installation has a product name configured.
@@ -161,11 +167,28 @@ module Clacky
     end
 
     # Save current state to ~/.clacky/brand.yml
+    #
+    # Writes atomically: content goes to a per-process temp file that is fsynced
+    # and then renamed over the target. rename is atomic within a filesystem, so
+    # concurrent processes (server + CLI, or multiple servers) never observe a
+    # truncated or half-written file — which previously caused load to fall back
+    # to an empty config and wipe the license.
     def save
       FileUtils.mkdir_p(CONFIG_DIR)
       Clacky::Logger.debug("[Brand] save: product_name=#{@product_name.inspect} license_key?=#{!@license_key.nil? && !@license_key.to_s.empty?} device_id?=#{!@device_id.nil? && !@device_id.to_s.empty?}")
-      File.write(BRAND_FILE, to_yaml)
-      FileUtils.chmod(0o600, BRAND_FILE)
+
+      tmp_path = "#{BRAND_FILE}.#{Process.pid}.#{SecureRandom.hex(4)}.tmp"
+      begin
+        File.open(tmp_path, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |f|
+          f.write(to_yaml)
+          f.flush
+          f.fsync
+        end
+        File.rename(tmp_path, BRAND_FILE)
+      rescue StandardError
+        File.delete(tmp_path) if File.exist?(tmp_path)
+        raise
+      end
     end
 
     # Remove the local license binding and wipe all brand-related fields from disk.
