@@ -6484,6 +6484,28 @@ body {
   overflow-y: auto;
 }
 
+/* ── Skills search ──────────────────────────────────────────────────────── */
+.skills-search {
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-primary);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  width: 12rem;
+}
+.skills-search::placeholder { color: var(--color-text-tertiary); }
+.skills-search:focus {
+  outline: none;
+  border-color: var(--color-accent, #6366f1);
+}
+.skills-search-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 0.875rem;
+}
+
 /* ── My Skills upload area (user-licensed only) ───────────────────────────── */
 .my-skills-upload-area {
   display: flex;
