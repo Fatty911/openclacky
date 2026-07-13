@@ -7193,26 +7193,38 @@ body {
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border-primary);
   border-radius: 8px;
-  padding: 0.875rem 1rem;
+  padding: 0.6rem 1rem;
   transition: border-color .15s;
 }
 .extension-card:hover { border-color: var(--color-text-muted); }
 .extension-card-main {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 0.75rem;
 }
 .extension-emoji {
   font-size: 1.5rem;
   line-height: 1.4;
   flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
 }
-.extension-info { flex: 1; min-width: 0; }
+.extension-default-icon {
+  width: 2rem;
+  height: 100%;
+  display: block;
+  border-radius: 7px;
+}
+.extension-emoji-lg .extension-default-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 10px;
+}
+.extension-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .extension-title {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.25rem;
   flex-wrap: wrap;
 }
 .extension-name {
@@ -7256,11 +7268,10 @@ body {
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   line-height: 1.5;
-  margin-bottom: 0.375rem;
 }
 .extension-desc-detail {
   font-size: 0.8125rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
 }
 .extension-detail-author {
   font-size: 0.6875rem;
@@ -7322,8 +7333,13 @@ body {
   padding-bottom: 1.25rem;
   border-bottom: 1px solid var(--color-border-primary);
 }
-.extension-detail-heading { flex: 1; min-width: 0; }
+.extension-detail-heading { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .extension-emoji-lg { font-size: 2.5rem; line-height: 1; margin-top: 0.125rem; }
+.extension-emoji-lg .extension-default-icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 12px;
+}
 .extension-name-lg { font-size: 1.125rem; font-weight: 700; }
 .extension-detail-block { margin-top: 1.5rem; }
 .extension-detail-block-title {
@@ -7449,7 +7465,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 0.75rem;
+  margin-top: 0.25rem;
 }
 .extension-disabled {
   font-size: 0.6875rem;
