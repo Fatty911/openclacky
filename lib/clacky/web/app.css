@@ -10650,7 +10650,7 @@ body.setup-mode[data-theme="dark"] {
 
 /* ── Model Filter ────────────────────────────────────────────────────── */
 .billing-model-filter {
-  padding: 0.4375rem 0.75rem;
+  padding: 0.4375rem 1.75rem 0.4375rem 0.75rem;
   border: 1px solid var(--color-border-primary);
   border-radius: 8px;
   background: var(--color-bg-secondary);
@@ -10658,6 +10658,23 @@ body.setup-mode[data-theme="dark"] {
   font-size: 0.8125rem;
   cursor: pointer;
   min-width: 130px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.625rem center;
+  transition: border-color 0.15s ease;
+}
+.billing-model-filter:hover {
+  border-color: var(--color-border-strong);
+}
+.billing-model-filter:focus {
+  outline: none;
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+.billing-model-filter option {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
 }
 
 /* ── Action Buttons ──────────────────────────────────────────────────── */
