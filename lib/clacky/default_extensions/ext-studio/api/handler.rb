@@ -111,7 +111,7 @@ class ExtStudioExt < Clacky::ApiExtension
     exts = Array(result[:extensions]).map do |ext|
       {
         id: ext["name"] || ext["slug"] || ext["id"],
-        name: ext["name"],
+        name: ext["display_name"] || ext["name"],
         version: (ext["latest_version"] || {})["version"] || ext["version"],
         status: ext["status"],
         units: ext["units"] || {}
