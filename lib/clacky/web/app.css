@@ -10095,7 +10095,7 @@ body.setup-mode[data-theme="dark"] {
 
 .memory-card-actions {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.375rem;
   flex-shrink: 0;
 }
@@ -10135,6 +10135,7 @@ body.setup-mode[data-theme="dark"] {
 
 .btn-memory-expand {
   min-width: 1.75rem;
+  align-self: stretch;
   justify-content: center;
   color: var(--color-text-muted);
 }
