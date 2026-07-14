@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [1.4.0] - 2026-07-14
+
+### Added
+- Volcengine Ark Seedance video generation provider (async submit + poll)
+- Entry points config and extension info editing in ext-studio
+- Search box in skills panel tab bar
+- Default letter gradient icon for extensions without a custom icon
+- Skeleton loading for published extensions list in ext-studio
+
+### Improved
+- Extensions market renders `display_name` instead of raw slug
+- ext-studio extension picker and cards show display name; unit tags aggregated by type
+- Session list "Today / Yesterday" labels localized
+
+### Fixed
+- Terminal Pass 1 echo-strip no longer swallows real output (C-5701)
+- OS metadata files (`.DS_Store`, `__MACOSX`) excluded from packed extension zips (C-5728)
+- TUI exit now restores original terminal settings via `stty` (C-5724)
+- Local image cache busted with mtime version param when file is overwritten (C-5703)
+- Generated media usage correctly associated with sessions (C-5739)
+- Mobile header search action alignment (C-5733)
+- Session search shortcut hint adapted for web (C-5734)
+- Memory card expand button height aligned with other action buttons
+- Billing model filter select styling improved
+- Modal overlay click-to-close disabled (prevents accidental dismissal)
+- Version number / date separator added in extension version history
+- All users can now publish extensions (permission gate removed)
+- Invalid extension version format shows inline error in publish modal
+- Brand update button hover color uses correct CSS variable
+
 ## [1.3.11] - 2026-07-12
 
 ### Added

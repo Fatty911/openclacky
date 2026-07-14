@@ -7237,7 +7237,6 @@ body {
   color: var(--color-text-secondary);
   background: var(--color-bg-tertiary, rgba(255,255,255,0.05));
   border-radius: 4px;
-  padding: 0.0625rem 0.375rem;
 }
 .extension-units {
   font-size: 0.6875rem;
@@ -7347,7 +7346,6 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-text-muted);
   margin: 0 0 0.75rem;
 }
 .extension-detail-section { margin-bottom: 0.875rem; }
@@ -10097,7 +10095,7 @@ body.setup-mode[data-theme="dark"] {
 
 .memory-card-actions {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.375rem;
   flex-shrink: 0;
 }
@@ -10137,6 +10135,7 @@ body.setup-mode[data-theme="dark"] {
 
 .btn-memory-expand {
   min-width: 1.75rem;
+  align-self: stretch;
   justify-content: center;
   color: var(--color-text-muted);
 }
