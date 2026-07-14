@@ -121,12 +121,17 @@ module Clacky
           files = if File.file?(expanded_path)
                     [expanded_path]
                   else
+                    # Auto-expand bare extension patterns (e.g. "*.ts") to recursive
+                    # (e.g. "**/*.ts"), matching ripgrep's default behaviour.
+                    # Patterns already containing "/" are left as-is — the user is
+                    # intentionally scoping to a specific directory.
+                    effective_pattern = file_pattern.include?("/") ? file_pattern : "**/#{file_pattern}"
                     fnmatch_flags = File::FNM_PATHNAME | File::FNM_DOTMATCH
                     collected = []
                     walk_status = {}
                     Clacky::Utils::FileIgnoreHelper.walk_files(expanded_path, skipped: skipped, status: walk_status) do |f|
                       relative = f[(expanded_path.length + 1)..]
-                      collected << f if File.fnmatch(file_pattern, relative, fnmatch_flags)
+                      collected << f if File.fnmatch(effective_pattern, relative, fnmatch_flags)
                     end
                     if walk_status[:truncated]
                       truncation_reason ||= "walk #{walk_status[:truncation_reason]}"
