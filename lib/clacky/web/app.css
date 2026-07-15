@@ -7199,7 +7199,7 @@ body {
 .extension-card:hover { border-color: var(--color-text-muted); }
 .extension-card-main {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 0.75rem;
 }
 .extension-emoji {
