@@ -11432,12 +11432,11 @@ body.setup-mode[data-theme="dark"] {
   color: var(--color-danger, #c33);
 }
 .mcp-tools-header {
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-text-secondary);
   margin-bottom: 0.5rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.01em;
 }
 .mcp-tool-list {
   list-style: none;
@@ -11449,10 +11448,9 @@ body.setup-mode[data-theme="dark"] {
 }
 .mcp-tool-item {
   display: flex;
-  align-items: baseline;
-  gap: 0.625rem;
-  font-size: 0.8125rem;
-  padding: 0.4375rem 0;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.625rem 0;
   border-bottom: 1px solid var(--color-border-primary, var(--color-border));
 }
 .mcp-tool-item:last-child {
@@ -11460,18 +11458,15 @@ body.setup-mode[data-theme="dark"] {
 }
 .mcp-tool-name {
   font-family: var(--font-mono);
-  background: var(--color-bg-elevated, var(--color-bg-secondary));
-  padding: 0.125rem 0.4375rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
   color: var(--color-text-primary, var(--color-text));
-  flex-shrink: 0;
-  border: 1px solid var(--color-border-primary, var(--color-border));
 }
 .mcp-tool-desc {
   color: var(--color-text-secondary);
-  flex: 1;
   line-height: 1.5;
+  font-size: 0.8125rem;
+  opacity: 0.6;
 }
 
 /* ── MCP CTA banner & action buttons ─────────────────────────────────── */
