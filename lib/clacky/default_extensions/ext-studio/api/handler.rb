@@ -91,8 +91,15 @@ class ExtStudioExt < Clacky::ApiExtension
         ver = (ext["latest_version"] || {})["version"]
         json(ok: true, ext_id: res.ext_id, version: ver, status: ext["status"])
       elsif result[:already_exists]
+        # The same user has already published this extension — they need to use
+        # force: true to publish a new version.
         json(ok: false, already_exists: true,
              error: "#{res.ext_id} already published. Publish a new version with force.")
+      elsif result[:error].to_s.include?("already taken")
+        # Another user has claimed this name globally — the creator must rename
+        # their extension before publishing.
+        json(ok: false, name_taken: true,
+             error: result[:error])
       else
         error!(result[:error] || "publish failed", status: 502)
       end
@@ -216,6 +223,50 @@ class ExtStudioExt < Clacky::ApiExtension
     json(ok: true, ext_id: ext_id, version: version)
   end
 
+
+  # POST /api/ext/ext-studio/set_id
+  # body: { ext_id, new_id }
+  # Renames an extension: updates the `id` field in ext.yml and renames the
+  # local container directory. Used when the user wants to republish under a
+  # different name (e.g. after a name-taken conflict on the marketplace).
+  post "/set_id" do
+    ext_id = require_ext_id!
+    new_id = presence(json_body["new_id"])
+    error!("new_id required", status: 422) unless new_id
+
+    slug_format = /\A[a-z0-9][a-z0-9\-]*[a-z0-9]\z/
+    unless new_id.length <= 64 && new_id.match?(slug_format)
+      error!("new_id must be lowercase letters, digits and hyphens (e.g. my-ext)", status: 422)
+    end
+
+    result    = Clacky::ExtensionLoader.load_all(force: false)
+    container = Array(result.containers).find { |id, _| id == ext_id }&.last
+    error!("extension not found: #{ext_id}", status: 404) unless container
+
+    old_dir = container[:dir]
+    new_dir = File.join(File.dirname(old_dir), new_id)
+    error!("An extension named '#{new_id}' already exists locally", status: 409) if File.exist?(new_dir)
+
+    yml_path = File.join(old_dir, "ext.yml")
+    error!("ext.yml not found", status: 404) unless File.exist?(yml_path)
+
+    # Update the id field in ext.yml, preserving all other content.
+    content = File.read(yml_path)
+    if content =~ /^id:/
+      content = content.sub(/^id:.*$/, "id: #{new_id}")
+    else
+      content = "id: #{new_id}\n" + content
+    end
+    File.write(yml_path, content)
+
+    # Rename the container directory.
+    File.rename(old_dir, new_dir)
+
+    # Reload so the new id is visible immediately.
+    Clacky::ExtensionLoader.load_all(force: true)
+
+    json(ok: true, old_id: ext_id, new_id: new_id)
+  end
 
   # body: { idea? }
   # Spawns a session bound to the ext-developer agent, optionally seeded with
