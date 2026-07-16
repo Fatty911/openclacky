@@ -2408,6 +2408,8 @@ module Clacky
           {
             "id"                => ext_id,
             "name"              => market ? (market["name"] || ext_id) : ext_id,
+            "display_name"      => market&.dig("display_name"),
+            "display_name_zh"   => market&.dig("display_name_zh"),
             "name_zh"           => market&.dig("name_zh"),
             "name_en"           => market&.dig("name_en"),
             "slug"              => ext_id,
