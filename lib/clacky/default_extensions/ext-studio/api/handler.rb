@@ -79,15 +79,14 @@ class ExtStudioExt < Clacky::ApiExtension
       res      = Clacky::ExtensionPackager.pack(ext_id, out_dir: tmp)
       zip_data = File.binread(res.path)
 
-      # Read readme from local ext.yml if present, so first-publish carries it.
+      # Read readme from local README.md if present, so first-publish carries it.
       local_readme = nil
       result_load  = Clacky::ExtensionLoader.load_all(force: false)
       container    = Array(result_load.containers).find { |id, _| id == res.ext_id }&.last
       if container
-        yml_path = File.join(container[:dir], "ext.yml")
-        if File.exist?(yml_path)
-          manifest     = Psych.safe_load(File.read(yml_path), permitted_classes: [], aliases: true) || {}
-          local_readme = manifest["readme"].to_s.strip
+        readme_path = File.join(container[:dir], "README.md")
+        if File.exist?(readme_path)
+          local_readme = File.read(readme_path, encoding: "utf-8").strip
           local_readme = nil if local_readme.empty?
         end
       end
@@ -196,21 +195,17 @@ class ExtStudioExt < Clacky::ApiExtension
       result = brand.update_extension_readme!(ext_id, readme)
       error!(result[:error] || "readme update failed", status: 502) unless result[:success]
     else
-      # Not yet published — persist readme to local ext.yml so it's included on first publish.
+      # Not yet published — persist readme to local README.md so it's included on first publish.
       result    = Clacky::ExtensionLoader.load_all(force: false)
       container = Array(result.containers).find { |id, _| id == ext_id }&.last
       error!("extension not found: #{ext_id}", status: 404) unless container
 
-      yml_path = File.join(container[:dir], "ext.yml")
-      error!("ext.yml not found", status: 404) unless File.exist?(yml_path)
-
-      manifest = Psych.safe_load(File.read(yml_path), permitted_classes: [], aliases: true) || {}
+      readme_path = File.join(container[:dir], "README.md")
       if readme.strip.empty?
-        manifest.delete("readme")
+        File.delete(readme_path) if File.exist?(readme_path)
       else
-        manifest["readme"] = readme
+        File.write(readme_path, readme, encoding: "utf-8")
       end
-      File.write(yml_path, Psych.dump(manifest))
     end
 
     json(ok: true, ext_id: ext_id, saved_to: published ? "platform" : "local")
@@ -440,6 +435,9 @@ class ExtStudioExt < Clacky::ApiExtension
     entry_points = panels.flat_map do |p|
       Array(p["entry_points"]).map { |ep| { panel_id: p["id"], slot: ep["slot"] } }
     end
+    readme_path    = File.join(dir, "README.md")
+    readme_content = File.exist?(readme_path) ? File.read(readme_path, encoding: "utf-8").strip : nil
+    readme_content = nil if readme_content&.empty?
     {
       id: ext_id,
       name: raw["name"] || ext_id,
@@ -453,7 +451,7 @@ class ExtStudioExt < Clacky::ApiExtension
       unit_counts: unit_counts(ext_units),
       contributes: raw["contributes"] || {},
       entry_points: entry_points,
-      readme: raw["readme"],
+      readme: readme_content,
       error_count: ext_issues.count { |i| i.level == :error },
       warning_count: ext_issues.count { |i| i.level == :warning }
     }
