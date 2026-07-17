@@ -700,6 +700,55 @@ module Clacky
       end
     end
 
+    # Update an extension's readme text without publishing a new version.
+    # Uses PATCH /api/v1/client/extensions/:id.
+    # Returns { success:, extension:, error: }
+    def update_extension_readme!(ext_id, readme)
+      identity = Clacky::Identity.load
+      return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
+
+      path    = "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}"
+      payload = { "device_token" => identity.device_token, "readme" => readme.to_s }
+      result  = platform_client.patch(path, payload)
+
+      if result[:success]
+        { success: true, extension: result[:data]["extension"] }
+      else
+        body = result[:data] || {}
+        { success: false, error: result[:error] || body["code"] || "Update readme failed" }
+      end
+    rescue StandardError => e
+      { success: false, error: "Network error: #{e.message}" }
+    end
+
+    # Upload a single screenshot for an extension.
+    # Uses POST /api/v1/client/extensions/:id/screenshots.
+    # Parameters:
+    #   ext_id       (string) - extension id or name
+    #   filename     (string) - image filename (e.g. "screenshot1.png")
+    #   data         (bytes)  - raw image bytes
+    #   content_type (string) - MIME type, default "image/png"
+    # Returns { success:, url:, filename:, error: }
+    def upload_extension_screenshot!(ext_id, filename:, data:, content_type: "image/png")
+      identity = Clacky::Identity.load
+      return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
+
+      path   = "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}/screenshots"
+      fields = { "device_token" => identity.device_token }
+      body_bytes, boundary = build_multipart(fields, "file", filename, data, content_type: content_type)
+      result = platform_client.multipart_post(path, body_bytes, boundary, read_timeout: 60)
+
+      if result[:success]
+        d = result[:data] || {}
+        { success: true, url: d["url"], filename: d["filename"] }
+      else
+        body = result[:data] || {}
+        { success: false, error: result[:error] || body["code"] || "Screenshot upload failed" }
+      end
+    rescue StandardError => e
+      { success: false, error: "Network error: #{e.message}" }
+    end
+
     # Search the public extension marketplace. Anonymous — no license required.
     # Uses GET /api/v1/extensions. Returns { success:, extensions: [], error: }.
     def search_extensions!(query: nil, sort: nil)
@@ -1579,7 +1628,7 @@ module Clacky
 
     # Assemble a binary multipart/form-data body: text fields + one file part.
     # Kept binary-safe so null bytes in the ZIP survive. Returns [body, boundary].
-    private def build_multipart(fields, file_field, filename, file_bytes)
+    private def build_multipart(fields, file_field, filename, file_bytes, content_type: "application/zip")
       boundary = "----ClackyMultipart#{SecureRandom.hex(8)}"
       crlf     = "\r\n"
       parts    = []
@@ -1591,7 +1640,7 @@ module Clacky
       end
       parts << "--#{boundary}#{crlf}"
       parts << "Content-Disposition: form-data; name=\"#{file_field}\"; filename=\"#{filename}\"#{crlf}"
-      parts << "Content-Type: application/zip#{crlf}#{crlf}"
+      parts << "Content-Type: #{content_type}#{crlf}#{crlf}"
       parts << file_bytes.b
       parts << "#{crlf}--#{boundary}--#{crlf}"
       [parts.map(&:b).join, boundary]
