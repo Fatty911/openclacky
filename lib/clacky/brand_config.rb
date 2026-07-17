@@ -622,7 +622,7 @@ module Clacky
     #
     # Returns { success: true, extension: {...} } or
     #         { success: false, error: "...", already_exists: Boolean }.
-    def upload_extension!(ext_id, zip_data, force: false, status: nil, changelog: nil, origin: 'marketplace')
+    def upload_extension!(ext_id, zip_data, force: false, status: nil, changelog: nil, readme: nil, origin: 'marketplace')
       identity = Clacky::Identity.load
       return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
 
@@ -636,6 +636,7 @@ module Clacky
       fields["origin"]    = origin.to_s      if origin
       fields["status"]    = status.to_s    if status
       fields["changelog"] = changelog.to_s if changelog
+      fields["readme"]    = readme.to_s    if readme
 
       body_bytes, boundary = build_multipart(fields, "extension_zip", "#{ext_id}.zip", zip_data)
 
@@ -721,29 +722,29 @@ module Clacky
       { success: false, error: "Network error: #{e.message}" }
     end
 
-    # Upload a single screenshot for an extension.
-    # Uses POST /api/v1/client/extensions/:id/screenshots.
+    # Upload any file to the platform's model-agnostic upload endpoint.
+    # Returns an orphan blob URL — no extension record required.
+    # Uses POST /api/v1/client/uploads.
     # Parameters:
-    #   ext_id       (string) - extension id or name
-    #   filename     (string) - image filename (e.g. "screenshot1.png")
-    #   data         (bytes)  - raw image bytes
-    #   content_type (string) - MIME type, default "image/png"
-    # Returns { success:, url:, filename:, error: }
-    def upload_extension_screenshot!(ext_id, filename:, data:, content_type: "image/png")
+    #   data         (bytes)  - raw file bytes
+    #   filename     (string) - filename including extension
+    #   content_type (string) - MIME type
+    # Returns { success:, url:, filename:, blob_key:, error: }
+    def upload_file!(data, filename:, content_type: "image/png")
       identity = Clacky::Identity.load
       return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
 
-      path   = "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}/screenshots"
+      path   = "/api/v1/client/uploads"
       fields = { "device_token" => identity.device_token }
       body_bytes, boundary = build_multipart(fields, "file", filename, data, content_type: content_type)
       result = platform_client.multipart_post(path, body_bytes, boundary, read_timeout: 60)
 
       if result[:success]
         d = result[:data] || {}
-        { success: true, url: d["url"], filename: d["filename"] }
+        { success: true, url: d["url"], filename: d["filename"], blob_key: d["blob_key"] }
       else
         body = result[:data] || {}
-        { success: false, error: result[:error] || body["code"] || "Screenshot upload failed" }
+        { success: false, error: result[:error] || body["code"] || "File upload failed" }
       end
     rescue StandardError => e
       { success: false, error: "Network error: #{e.message}" }
