@@ -622,7 +622,7 @@ module Clacky
     #
     # Returns { success: true, extension: {...} } or
     #         { success: false, error: "...", already_exists: Boolean }.
-    def upload_extension!(ext_id, zip_data, force: false, status: nil, changelog: nil, origin: 'marketplace')
+    def upload_extension!(ext_id, zip_data, force: false, status: nil, changelog: nil, readme: nil, origin: 'marketplace')
       identity = Clacky::Identity.load
       return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
 
@@ -636,6 +636,7 @@ module Clacky
       fields["origin"]    = origin.to_s      if origin
       fields["status"]    = status.to_s    if status
       fields["changelog"] = changelog.to_s if changelog
+      fields["readme"]    = readme.to_s    if readme
 
       body_bytes, boundary = build_multipart(fields, "extension_zip", "#{ext_id}.zip", zip_data)
 
@@ -698,6 +699,55 @@ module Clacky
       else
         { success: false, error: response[:error] || "Delete failed" }
       end
+    end
+
+    # Update an extension's readme text without publishing a new version.
+    # Uses PATCH /api/v1/client/extensions/:id.
+    # Returns { success:, extension:, error: }
+    def update_extension_readme!(ext_id, readme)
+      identity = Clacky::Identity.load
+      return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
+
+      path    = "/api/v1/client/extensions/#{URI.encode_www_form_component(ext_id)}"
+      payload = { "device_token" => identity.device_token, "readme" => readme.to_s }
+      result  = platform_client.patch(path, payload)
+
+      if result[:success]
+        { success: true, extension: result[:data]["extension"] }
+      else
+        body = result[:data] || {}
+        { success: false, error: result[:error] || body["code"] || "Update readme failed" }
+      end
+    rescue StandardError => e
+      { success: false, error: "Network error: #{e.message}" }
+    end
+
+    # Upload any file to the platform's model-agnostic upload endpoint.
+    # Returns an orphan blob URL — no extension record required.
+    # Uses POST /api/v1/client/uploads.
+    # Parameters:
+    #   data         (bytes)  - raw file bytes
+    #   filename     (string) - filename including extension
+    #   content_type (string) - MIME type
+    # Returns { success:, url:, filename:, blob_key:, error: }
+    def upload_file!(data, filename:, content_type: "image/png")
+      identity = Clacky::Identity.load
+      return { success: false, error: "Device not bound to a platform account" } unless identity.bound?
+
+      path   = "/api/v1/client/uploads"
+      fields = { "device_token" => identity.device_token }
+      body_bytes, boundary = build_multipart(fields, "file", filename, data, content_type: content_type)
+      result = platform_client.multipart_post(path, body_bytes, boundary, read_timeout: 60)
+
+      if result[:success]
+        d = result[:data] || {}
+        { success: true, url: d["url"], filename: d["filename"], blob_key: d["blob_key"] }
+      else
+        body = result[:data] || {}
+        { success: false, error: result[:error] || body["code"] || "File upload failed" }
+      end
+    rescue StandardError => e
+      { success: false, error: "Network error: #{e.message}" }
     end
 
     # Search the public extension marketplace. Anonymous — no license required.
@@ -1579,7 +1629,7 @@ module Clacky
 
     # Assemble a binary multipart/form-data body: text fields + one file part.
     # Kept binary-safe so null bytes in the ZIP survive. Returns [body, boundary].
-    private def build_multipart(fields, file_field, filename, file_bytes)
+    private def build_multipart(fields, file_field, filename, file_bytes, content_type: "application/zip")
       boundary = "----ClackyMultipart#{SecureRandom.hex(8)}"
       crlf     = "\r\n"
       parts    = []
@@ -1591,7 +1641,7 @@ module Clacky
       end
       parts << "--#{boundary}#{crlf}"
       parts << "Content-Disposition: form-data; name=\"#{file_field}\"; filename=\"#{filename}\"#{crlf}"
-      parts << "Content-Type: application/zip#{crlf}#{crlf}"
+      parts << "Content-Type: #{content_type}#{crlf}#{crlf}"
       parts << file_bytes.b
       parts << "#{crlf}--#{boundary}--#{crlf}"
       [parts.map(&:b).join, boundary]

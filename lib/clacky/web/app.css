@@ -7348,6 +7348,38 @@ body {
   letter-spacing: 0.04em;
   margin: 0 0 0.75rem;
 }
+/* Readme rendered Markdown */
+.extension-readme-body {
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--color-text-primary);
+  overflow-wrap: break-word;
+}
+.extension-readme-body h1,
+.extension-readme-body h2,
+.extension-readme-body h3 { margin: 1em 0 0.4em; font-weight: 600; }
+.extension-readme-body h1 { font-size: 1.2em; }
+.extension-readme-body h2 { font-size: 1.05em; }
+.extension-readme-body h3 { font-size: 0.95em; }
+.extension-readme-body p  { margin: 0 0 0.75em; }
+.extension-readme-body ul,
+.extension-readme-body ol { padding-left: 1.4em; margin: 0 0 0.75em; }
+.extension-readme-body pre {
+  background: var(--color-bg-secondary);
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  font-size: 0.8em;
+}
+.extension-readme-body code {
+  background: var(--color-bg-secondary);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+.extension-readme-body pre code { background: none; padding: 0; }
+.extension-readme-body a { color: var(--color-accent); }
+.extension-readme-body img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; }
 .extension-detail-section { margin-bottom: 0.875rem; }
 .extension-detail-section-title {
   font-size: 0.6875rem;

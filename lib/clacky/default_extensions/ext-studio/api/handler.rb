@@ -79,11 +79,24 @@ class ExtStudioExt < Clacky::ApiExtension
       res      = Clacky::ExtensionPackager.pack(ext_id, out_dir: tmp)
       zip_data = File.binread(res.path)
 
+      # Read readme from local README.md if present, so first-publish carries it.
+      local_readme = nil
+      result_load  = Clacky::ExtensionLoader.load_all(force: false)
+      container    = Array(result_load.containers).find { |id, _| id == res.ext_id }&.last
+      if container
+        readme_path = File.join(container[:dir], "README.md")
+        if File.exist?(readme_path)
+          local_readme = File.read(readme_path, encoding: "utf-8").strip
+          local_readme = nil if local_readme.empty?
+        end
+      end
+
       result = brand.upload_extension!(
         res.ext_id, zip_data,
         force:     json_body["force"] == true,
         status:    presence(json_body["status"]),
-        changelog: presence(json_body["changelog"])
+        changelog: presence(json_body["changelog"]),
+        readme:    local_readme
       )
 
       if result[:success]
@@ -154,6 +167,81 @@ class ExtStudioExt < Clacky::ApiExtension
     result = Clacky::BrandConfig.load.delete_extension!(ext_id)
     error!(result[:error] || "unpublish failed", status: 502) unless result[:success]
     json(ok: true, ext_id: ext_id)
+  end
+
+  # PATCH /api/ext/ext-studio/readme
+  # body: { ext_id, readme }
+  # Two modes:
+  #   - Extension already published → save to platform via API
+  #   - Extension not yet published → write readme field to local ext.yml
+  patch "/readme" do
+    ext_id = require_ext_id!
+    readme = json_body["readme"].to_s
+
+    # Check whether this extension has been published on the platform.
+    brand    = Clacky::BrandConfig.load
+    identity = Clacky::Identity.load
+    published = false
+
+    if identity.bound?
+      my_result = brand.fetch_my_extensions!
+      if my_result[:success]
+        published = Array(my_result[:extensions]).any? { |e| (e["name"] || e["slug"]) == ext_id }
+      end
+    end
+
+    if published
+      # Already on the platform — update readme there.
+      result = brand.update_extension_readme!(ext_id, readme)
+      error!(result[:error] || "readme update failed", status: 502) unless result[:success]
+    else
+      # Not yet published — persist readme to local README.md so it's included on first publish.
+      result    = Clacky::ExtensionLoader.load_all(force: false)
+      container = Array(result.containers).find { |id, _| id == ext_id }&.last
+      error!("extension not found: #{ext_id}", status: 404) unless container
+
+      readme_path = File.join(container[:dir], "README.md")
+      if readme.strip.empty?
+        File.delete(readme_path) if File.exist?(readme_path)
+      else
+        File.write(readme_path, readme, encoding: "utf-8")
+      end
+    end
+
+    json(ok: true, ext_id: ext_id, saved_to: published ? "platform" : "local")
+  end
+
+  # POST /api/ext/ext-studio/screenshot
+  # Multipart body: { ext_id (field), file (image file) }
+  # Uploads a screenshot image via the platform's model-agnostic upload API
+  # and returns the CDN URL. Does NOT require the extension to be published yet.
+  post "/screenshot" do
+    q = req.query
+    ext_id = q["ext_id"].to_s.strip
+    error!("ext_id required", status: 422) if ext_id.empty?
+
+    uploaded = q["file"]
+    error!("missing file", status: 422) unless uploaded
+
+    # WEBrick::HTTPUtils::FormData inherits from String — .to_s is the file bytes,
+    # .filename is the original filename, .["content-type"] gives the MIME type.
+    filename     = uploaded.respond_to?(:filename) ? (uploaded.filename || "screenshot.png") : "screenshot.png"
+    content_type = (uploaded.respond_to?(:[]) ? uploaded["content-type"].to_s : "")
+    content_type = "image/png" if content_type.empty?
+    data         = uploaded.to_s
+    error!("missing file", status: 422) if data.empty?
+
+    unless Clacky::Identity.load.bound?
+      error!("device not bound to a platform account", status: 428, needs_binding: true)
+    end
+
+    result = Clacky::BrandConfig.load.upload_file!(
+      data,
+      filename:     filename,
+      content_type: content_type
+    )
+    error!(result[:error] || "screenshot upload failed", status: 502) unless result[:success]
+    json(ok: true, url: result[:url], filename: result[:filename])
   end
 
   # POST /api/ext/ext-studio/set_meta
@@ -347,6 +435,9 @@ class ExtStudioExt < Clacky::ApiExtension
     entry_points = panels.flat_map do |p|
       Array(p["entry_points"]).map { |ep| { panel_id: p["id"], slot: ep["slot"] } }
     end
+    readme_path    = File.join(dir, "README.md")
+    readme_content = File.exist?(readme_path) ? File.read(readme_path, encoding: "utf-8").strip : nil
+    readme_content = nil if readme_content&.empty?
     {
       id: ext_id,
       name: raw["name"] || ext_id,
@@ -360,6 +451,7 @@ class ExtStudioExt < Clacky::ApiExtension
       unit_counts: unit_counts(ext_units),
       contributes: raw["contributes"] || {},
       entry_points: entry_points,
+      readme: readme_content,
       error_count: ext_issues.count { |i| i.level == :error },
       warning_count: ext_issues.count { |i| i.level == :warning }
     }
