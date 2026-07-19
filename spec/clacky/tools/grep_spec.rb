@@ -33,6 +33,36 @@ RSpec.describe Clacky::Tools::Grep do
       end
     end
 
+    it "auto-expands bare extension patterns to recursive (e.g. '*.ts' becomes '**/*.ts')" do
+      Dir.mktmpdir do |dir|
+        # Root-level file
+        File.write(File.join(dir, "root.ts"), "export const findme = 1")
+        # Nested file — this is the case that would fail without auto-expansion
+        FileUtils.mkdir_p(File.join(dir, "nested", "deep"))
+        File.write(File.join(dir, "nested", "deep", "deep.ts"), "export const findme = 2")
+
+        result = tool.execute(pattern: "findme", path: dir, file_pattern: "*.ts")
+
+        expect(result[:error]).to be_nil
+        expect(result[:files_with_matches]).to eq(2)
+        expect(result[:files_searched]).to be >= 2
+      end
+    end
+
+    it "does not auto-expand patterns that already contain a path separator" do
+      Dir.mktmpdir do |dir|
+        FileUtils.mkdir_p(File.join(dir, "nested"))
+        File.write(File.join(dir, "root.rb"), "findme")
+        File.write(File.join(dir, "nested", "nested.rb"), "findme")
+
+        # "nested/*.rb" explicitly scopes to the nested directory — should NOT expand
+        result = tool.execute(pattern: "findme", path: dir, file_pattern: "nested/*.rb")
+
+        expect(result[:error]).to be_nil
+        expect(result[:files_with_matches]).to eq(1)
+      end
+    end
+
     it "supports case insensitive search" do
       Dir.mktmpdir do |dir|
         file_path = File.join(dir, "test.txt")
