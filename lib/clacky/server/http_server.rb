@@ -964,11 +964,13 @@ module Clacky
       # Phase "key_setup"  → no API key configured yet
       # Phase "soul_setup" → key configured, but ~/.clacky/agents/SOUL.md missing
       # needs_onboard: false → fully set up
+      # branded: true → running under a brand; hide the OpenClacky AI Keys block
       def api_onboard_status(res)
+        branded = Clacky::BrandConfig.load.branded?
         if !@agent_config.models_configured?
-          json_response(res, 200, { needs_onboard: true, phase: "key_setup" })
+          json_response(res, 200, { needs_onboard: true, phase: "key_setup", branded: branded })
         else
-          json_response(res, 200, { needs_onboard: false })
+          json_response(res, 200, { needs_onboard: false, branded: branded })
         end
       end
 
