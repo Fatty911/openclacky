@@ -2652,7 +2652,9 @@ module Clacky
       end
 
       def api_store_extension_uninstall(req, res)
-        id = parse_json_body(req)["id"].to_s
+        body = parse_json_body(req)
+        id = body["id"].to_s
+        purge_data = body["purge_data"] == true
         container = extension_container(id)
         if container.nil?
           json_response(res, 404, { ok: false, error: "Not installed." })
@@ -2663,7 +2665,7 @@ module Clacky
           return
         end
 
-        if Clacky::ExtensionLoader.uninstall!(id)
+        if Clacky::ExtensionLoader.uninstall!(id, purge_data: purge_data)
           json_response(res, 200, { ok: true, id: id })
         else
           json_response(res, 404, { ok: false, error: "Not installed." })
