@@ -2452,7 +2452,7 @@ body {
   flex-shrink: 0;
   margin-bottom: -9px;
   display: flex;
-  padding-inline: 12px;
+  padding-inline: 24px;
 }
 .session-composer > * {
   justify-content: flex-start !important;
