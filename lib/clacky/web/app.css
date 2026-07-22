@@ -3581,7 +3581,6 @@ body {
 }
 .sib-id-clickable {
   cursor: pointer;
-  padding: 1px 0.25rem;
   border-radius: 3px;
   transition: all 0.15s ease;
 }
