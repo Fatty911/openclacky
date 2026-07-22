@@ -3558,7 +3558,7 @@ body {
   opacity: 0.45;
 }
 [data-theme="dark"] #sib-id {
-  opacity: 0.6;
+  opacity: 1;
 }
 [data-theme="dark"] #sib-dir {
   opacity: 0.85;
@@ -3570,7 +3570,7 @@ body {
 }
 
 #sib-id {
-  opacity: 0.45;       /* tier 3 — glanceable */
+  opacity: 1;
   font-size: 0.625rem;
   letter-spacing: 0.03em;
   flex-shrink: 0;
