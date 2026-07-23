@@ -1248,7 +1248,10 @@ module Clacky
     # @param on_complete [Proc, nil] Optional callback called with the sync
     #   results array once all downloads finish (useful for tests / UI feedback).
     # @return [Thread, nil] The background thread, or nil if skipped.
-    def sync_brand_skills_async!(on_complete: nil)
+    # install_new: when true, install ALL remote skills regardless of whether they
+    # were previously installed. Used on first activation so every brand skill is
+    # available immediately without the user clicking Install one-by-one.
+    def sync_brand_skills_async!(on_complete: nil, install_new: false)
       return nil unless activated?
       return nil if ENV["CLACKY_TEST"] == "1"
 
@@ -1267,13 +1270,17 @@ module Clacky
             delete_brand_skill!(local_name) unless remote_skill_names.include?(local_name)
           end
 
-          # Auto-sync is intentionally limited to skills the user has already
-          # installed and that have a newer version available.
-          # New skills are never auto-installed — the user must click Install/Update
-          # explicitly from the Brand Skills panel.
+          # When install_new is true (e.g. on first activation) install every
+          # remote skill. Otherwise limit auto-sync to skills already installed
+          # locally that have a newer version available — new skills must be
+          # installed explicitly by the user from the Brand Skills panel.
           installed = installed_brand_skills
-          skills_needing_update = result[:skills].select { |s| s["needs_update"] }
-          results = skills_needing_update.map do |skill_info|
+          skills_to_install = if install_new
+                                result[:skills].select { |s| s["needs_update"] || !installed.key?(s["name"]) }
+                              else
+                                result[:skills].select { |s| s["needs_update"] }
+                              end
+          results = skills_to_install.map do |skill_info|
             install_brand_skill!(skill_info)
           end
 

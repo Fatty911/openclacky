@@ -2312,6 +2312,9 @@ module Clacky
           # Refresh skill_loader with the now-activated brand config so brand
           # skills are loadable from this point forward (e.g. after sync).
           @skill_loader = Clacky::SkillLoader.new(working_dir: nil, brand_config: brand)
+          # Install all brand skills in the background on first activation so
+          # they are available immediately without manual user action.
+          brand.sync_brand_skills_async!(install_new: true)
           json_response(res, 200, {
             ok:            true,
             product_name:  result[:product_name] || brand.product_name,
