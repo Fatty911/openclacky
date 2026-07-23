@@ -546,6 +546,7 @@ module Clacky
         when ["POST",   "/api/onboard/skip-soul"] then api_onboard_skip_soul(req, res)
         when ["GET",    "/api/store/skills"]          then api_store_skills(res)
         when ["GET",    "/api/store/extensions"]          then api_store_extensions(req, res)
+        when ["GET",    "/api/store/extensions/brand"]   then api_store_extensions_brand(res)
         when ["GET",    "/api/store/extensions/installed"] then api_store_extensions_installed(res)
         when ["GET",    "/api/store/extension"]       then api_store_extension_detail(req, res)
         when ["POST",   "/api/store/extension/install"]  then api_store_extension_install(req, res)
@@ -2312,6 +2313,9 @@ module Clacky
           # Refresh skill_loader with the now-activated brand config so brand
           # skills are loadable from this point forward (e.g. after sync).
           @skill_loader = Clacky::SkillLoader.new(working_dir: nil, brand_config: brand)
+          # Install all brand skills in the background on first activation so
+          # they are available immediately without manual user action.
+          brand.sync_brand_skills_async!(install_new: true)
           json_response(res, 200, {
             ok:            true,
             product_name:  result[:product_name] || brand.product_name,
@@ -2362,66 +2366,73 @@ module Clacky
 
       # GET /api/store/extensions?q=&sort=
       #
-      # Extension marketplace catalog.
-      # - Brand users (activated license): returns only extensions belonging to
-      #   the brand, via BrandConfig#fetch_brand_extensions!.
-      # - Anonymous / non-brand users: returns the public catalog via
-      #   BrandConfig#search_extensions! (proxies /api/v1/extensions).
+      # Public extension marketplace catalog — always returns the full public
+      # catalog regardless of brand status. Both brand and non-brand users see
+      # the same public marketplace here.
       def api_store_extensions(req, res)
+        brand  = Clacky::BrandConfig.load
+        result = brand.search_extensions!(query: req.query["q"], sort: req.query["sort"])
+
+        if result[:success]
+          installed = installed_extension_containers
+          extensions = Array(result[:extensions]).map do |ext|
+            slug      = ext["name"] || ext[:name] || ext["slug"] || ext[:slug]
+            container = installed[slug]
+            ext.merge(
+              "installed"         => !container.nil?,
+              "installed_version" => container&.dig(:version)
+            )
+          end
+          json_response(res, 200, { ok: true, extensions: extensions })
+        else
+          json_response(res, 200, {
+            ok:         true,
+            extensions: [],
+            warning:    result[:error] || "Could not reach the extension store."
+          })
+        end
+      end
+
+      # GET /api/store/extensions/brand
+      #
+      # Brand-private extension catalog — only available to users with an
+      # activated brand license. Returns extensions belonging to this brand via
+      # BrandConfig#fetch_brand_extensions!.
+      # Returns 403 when the license is not activated.
+      def api_store_extensions_brand(res)
         brand = Clacky::BrandConfig.load
 
-        if brand.activated?
-          # Brand user — show only this brand's extensions.
-          result = brand.fetch_brand_extensions!
+        unless brand.activated?
+          json_response(res, 403, { ok: false, error: "Brand license not activated." })
+          return
+        end
 
-          if result[:success]
-            installed = installed_extension_containers
-            extensions = Array(result[:extensions]).map do |ext|
-              slug      = ext["name"] || ext[:name] || ext["slug"] || ext[:slug]
-              container = installed[slug]
-              # Merge local container data for self-authored extensions so that
-              # emoji / display_name show consistently between "All" and "Installed" tabs.
-              local_overrides = {}
-              if container && ext["emoji"].to_s.empty?
-                local_emoji = container.dig(:raw, "emoji") || container[:emoji]
-                local_overrides["emoji"] = local_emoji if local_emoji.to_s.strip != ""
-              end
-              ext.merge(
-                "installed"         => !ext["installed_version"].nil?,
-                "installed_version" => ext["installed_version"],
-                **local_overrides
-              )
+        result = brand.fetch_brand_extensions!
+
+        if result[:success]
+          installed = installed_extension_containers
+          extensions = Array(result[:extensions]).map do |ext|
+            slug      = ext["name"] || ext[:name] || ext["slug"] || ext[:slug]
+            container = installed[slug]
+            # Merge local container data (e.g. emoji) for self-authored extensions.
+            local_overrides = {}
+            if container && ext["emoji"].to_s.empty?
+              local_emoji = container.dig(:raw, "emoji") || container[:emoji]
+              local_overrides["emoji"] = local_emoji if local_emoji.to_s.strip != ""
             end
-            json_response(res, 200, { ok: true, extensions: extensions })
-          else
-            json_response(res, 200, {
-              ok:         true,
-              extensions: [],
-              warning:    result[:error] || "Could not reach the extension store."
-            })
+            ext.merge(
+              "installed"         => !ext["installed_version"].nil?,
+              "installed_version" => ext["installed_version"],
+              **local_overrides
+            )
           end
+          json_response(res, 200, { ok: true, extensions: extensions })
         else
-          # Public / anonymous user — show the full marketplace catalog.
-          result = brand.search_extensions!(query: req.query["q"], sort: req.query["sort"])
-
-          if result[:success]
-            installed = installed_extension_containers
-            extensions = Array(result[:extensions]).map do |ext|
-              slug      = ext["name"] || ext[:name] || ext["slug"] || ext[:slug]
-              container = installed[slug]
-              ext.merge(
-                "installed"         => !container.nil?,
-                "installed_version" => container&.dig(:version)
-              )
-            end
-            json_response(res, 200, { ok: true, extensions: extensions })
-          else
-            json_response(res, 200, {
-              ok:         true,
-              extensions: [],
-              warning:    result[:error] || "Could not reach the extension store."
-            })
-          end
+          json_response(res, 200, {
+            ok:         true,
+            extensions: [],
+            warning:    result[:error] || "Could not reach the extension store."
+          })
         end
       end
 
@@ -5797,6 +5808,9 @@ module Clacky
           {
             id:                id,
             name:              preset["name"],
+            # Optional i18n key for the display name (localised per UI language);
+            # frontend falls back to `name` when absent or untranslated.
+            name_key:          preset["name_key"],
             base_url:          preset["base_url"],
             default_model:     preset["default_model"],
             models:            preset["models"] || [],
