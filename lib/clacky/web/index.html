@@ -54,6 +54,14 @@
     <div id="header-right">
       <span id="ext-slot-header-right" data-slot="header.right"></span>
 
+      <button id="reload-header" class="theme-toggle-btn" title="Reload" onclick="location.reload()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+          <path d="M8 16H3v5"/>
+        </svg>
+      </button>
       <button id="share-toggle-header" class="theme-toggle-btn" data-i18n-title="share.tooltip" title="Share">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
           <circle cx="18" cy="5" r="3"/>
@@ -64,11 +72,7 @@
         </svg>
       </button>
       <button id="notify-toggle-header" class="theme-toggle-btn" data-i18n-title="notify.tooltip.off" title="Sound on task complete"></button>
-      <button id="theme-toggle-header" class="theme-toggle-btn" title="Toggle theme">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
-          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
-        </svg>
-      </button>
+
     </div>
   </header>
 
@@ -949,6 +953,43 @@
             </div>
           </section>
 
+          <!-- Background Theme section -->
+          <section class="settings-section" id="bg-theme-section">
+            <div class="settings-section-title">
+              <span data-i18n="settings.bgTheme.title">Background</span>
+            </div>
+            <div class="settings-bg-theme-cards">
+              <button class="settings-bg-theme-card bg-theme-dark" data-bg-theme="dark">
+                <div class="bg-card-preview">
+                  <div class="bg-card-sidebar"></div>
+                  <div class="bg-card-main"></div>
+                </div>
+                <span class="bg-card-label" data-i18n="settings.bgTheme.dark">Dark</span>
+              </button>
+              <button class="settings-bg-theme-card bg-theme-dim" data-bg-theme="dim">
+                <div class="bg-card-preview">
+                  <div class="bg-card-sidebar"></div>
+                  <div class="bg-card-main"></div>
+                </div>
+                <span class="bg-card-label" data-i18n="settings.bgTheme.dim">Dim</span>
+              </button>
+              <button class="settings-bg-theme-card bg-theme-warm" data-bg-theme="warm">
+                <div class="bg-card-preview">
+                  <div class="bg-card-sidebar"></div>
+                  <div class="bg-card-main"></div>
+                </div>
+                <span class="bg-card-label" data-i18n="settings.bgTheme.warm">Warm</span>
+              </button>
+              <button class="settings-bg-theme-card bg-theme-light" data-bg-theme="light">
+                <div class="bg-card-preview">
+                  <div class="bg-card-sidebar"></div>
+                  <div class="bg-card-main"></div>
+                </div>
+                <span class="bg-card-label" data-i18n="settings.bgTheme.light">Light</span>
+              </button>
+            </div>
+          </section>
+
           <!-- Accent Color section -->
           <section class="settings-section" id="accent-color-section">
             <div class="settings-section-title">
@@ -961,6 +1002,10 @@
               <button class="settings-accent-swatch swatch-sunrise-orange" data-color="#F59E0B" title="Sunrise Orange"></button>
               <button class="settings-accent-swatch swatch-rose-violet"    data-color="#8B5CF6" title="Rose Violet"></button>
               <button class="settings-accent-swatch swatch-coral-red"      data-color="#EF4444" title="Coral Red"></button>
+              <button class="settings-accent-swatch swatch-sky-blue"       data-color="#38BDF8" title="Sky Blue"></button>
+              <button class="settings-accent-swatch swatch-hot-pink"       data-color="#EC4899" title="Hot Pink"></button>
+              <button class="settings-accent-swatch swatch-warm-brown"     data-color="#92745A" title="Warm Brown"></button>
+              <button class="settings-accent-swatch swatch-slate-gray"     data-color="#6B7280" title="Slate Gray"></button>
             </div>
           </section>
         </div>
