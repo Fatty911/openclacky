@@ -471,6 +471,10 @@ guided flow. Use the CLI below for scripted/CI publishing.
   extension to that account). If it isn't bound, tell the user to authorize the device
   first — don't try to work around it.
 - Run `clacky ext verify` one last time and confirm no errors.
+- **README check:** If `~/.clacky/ext/local/<id>/README.md` does not exist, ask the user
+  before proceeding: "No README.md found — would you like me to write usage instructions
+  first?" If yes, read the source files and write a concise README, then publish. If the
+  user asks to write a README / usage instructions at any point, do the same.
 
 ### Publish (first time)
 
