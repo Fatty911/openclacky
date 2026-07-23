@@ -34,7 +34,7 @@ uninstall_gem() {
     command_exists gem || return 1
     if gem list -i openclacky >/dev/null 2>&1; then
         print_step "Uninstalling via RubyGems..."
-        gem uninstall openclacky -x
+        gem uninstall openclacky -a -x
     else
         print_info "Gem 'openclacky' not found (already removed)"
     fi
