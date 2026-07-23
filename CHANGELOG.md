@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [1.5.0] - 2026-07-23
+
+### Added
+- Volcengine Ark (Doubao) provider with endpoint-aware model-id mapping
+- Brand tab in extension marketplace for brand-private extensions
+- Auto-install all brand skills on license activation
+- Multi-background theme support with refactored theme engine
+- Short hash suffix in session-info-bar session file label with tooltips
+- Guide ext-develop skill to the host-API reference
+
+### Improved
+- Ext-developer skill prompt updated with engineering discipline guidelines
+- ext-develop skill merged into a single consolidated guide
+- Brand status fetch moved from view layer to store (cleaner architecture)
+- README check prompted before publishing extension
+- MCP page copy updated (removed Clacky brand name)
+- Floating window border effect added to content area
+
+### Fixed
+- CRLF normalization in SSE chunks for servers sending `\r\n\r\n` event separators
+- Subagent tool-item completion with DOM fallback when element not yet in DOM
+- AgentError now carries raw_message for LLM network/timeout errors
+- Extension data persisted outside package dir (C-5729)
+- Idle compression worker shutdown before process exit
+- Install button shown for all extension origins when download_url is present
+
 ## [1.4.1] - 2026-07-20
 
 ### Added
