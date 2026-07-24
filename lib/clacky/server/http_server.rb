@@ -2541,10 +2541,11 @@ module Clacky
         units
       end
 
-      # GET /api/store/extension?id=<slug-or-id>
+      # GET /api/store/extension?id=<slug-or-id>[&source=brand]
       #
-      # Public detail for a single marketplace extension (contributes + version
-      # history). Anonymous, proxies BrandConfig#extension_detail!.
+      # Detail for a single extension. Pass source=brand to query brand-private
+      # extensions via the license-gated API; omit (or any other value) for the
+      # public marketplace API.
       def api_store_extension_detail(req, res)
         id = req.query["id"].to_s
         if id.strip.empty?
@@ -2553,10 +2554,11 @@ module Clacky
         end
 
         brand  = Clacky::BrandConfig.load
-        # Brand-private extensions (origin=self) are not visible via the public
-        # /api/v1/extensions/:id endpoint. Activated brand users must use the
-        # license-gated POST /api/v1/licenses/extension instead.
-        result = brand.activated? ? brand.brand_extension_detail!(id) : brand.extension_detail!(id)
+        result = if req.query["source"] == "brand"
+          brand.brand_extension_detail!(id)
+        else
+          brand.extension_detail!(id)
+        end
 
         if result[:success] && result[:extension]
           ext  = result[:extension]
