@@ -249,6 +249,7 @@ module Clacky
         id: model["id"],
         model: model["model"],
         base_url: model["base_url"],
+        provider_id: model["provider_id"],
         card_model: base_entry&.dig("model"),
         sub_model: sub_model
       }
