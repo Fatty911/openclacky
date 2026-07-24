@@ -28,7 +28,7 @@ module Clacky
       "platform.error.license_revoked"      => "该许可证已被吊销，请联系客服。",
       "platform.error.license_expired"      => "该许可证已过期，请续订后继续。",
       "platform.error.device_limit_reached" => "该许可证的设备数量已达上限。",
-      "platform.error.device_revoked"       => "该设备已从许可证中移除。",
+      "platform.error.device_revoked"       => "该设备已从许可证中移除。如需重新绑定，请等待 15 分钟后再试。",
       "platform.error.invalid_license"      => "未找到许可证密钥，请核对后重试。",
       "platform.error.device_not_found"     => "设备未注册，请重新激活。",
       "platform.error.contributor_required" => "发布扩展需要先成为扩展贡献者。请登录平台，打开「我的扩展」页面，点击「成为扩展贡献者」即可开通（无需审核）。",

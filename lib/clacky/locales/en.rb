@@ -28,7 +28,7 @@ module Clacky
       "platform.error.license_revoked"      => "This license has been revoked. Please contact support.",
       "platform.error.license_expired"      => "This license has expired. Please renew to continue.",
       "platform.error.device_limit_reached" => "Device limit reached for this license.",
-      "platform.error.device_revoked"       => "This device has been revoked from the license.",
+      "platform.error.device_revoked"       => "This device has been revoked from the license. To re-activate, please wait 15 minutes and try again.",
       "platform.error.invalid_license"      => "License key not found. Please verify the key.",
       "platform.error.device_not_found"     => "Device not registered. Please re-activate.",
       "platform.error.contributor_required" => "Publishing extensions requires becoming a contributor. Sign in, open \"My Extensions\", and click \"Become a contributor\" (no review needed).",

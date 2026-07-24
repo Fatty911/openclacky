@@ -376,8 +376,10 @@ module Clacky
       # in any preset (e.g. self-hosted custom endpoints) — the WebUI
       # treats that as "no sub-model switcher available".
       private def sub_model_options_for(model_info)
-        return [] unless model_info && model_info[:base_url]
-        provider_id = Clacky::Providers.find_by_base_url(model_info[:base_url])
+        return [] unless model_info
+        # Prefer explicitly saved provider_id, fall back to base_url lookup
+        provider_id = model_info[:provider_id].to_s.strip.then { |v| v.empty? ? nil : v }
+        provider_id ||= (model_info[:base_url] && Clacky::Providers.find_by_base_url(model_info[:base_url]))
         return [] unless provider_id
         Clacky::Providers.models(provider_id)
       end

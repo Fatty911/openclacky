@@ -5396,6 +5396,7 @@ module Clacky
             base_url:         m["base_url"],
             api_key_masked:   mask_api_key(m["api_key"]),
             anthropic_format: m["anthropic_format"] || false,
+            provider_id:      m["provider_id"],
             type:             m["type"]
           }
         end
@@ -5604,7 +5605,8 @@ module Clacky
           "model"            => model,
           "base_url"         => base_url,
           "api_key"          => api_key,
-          "anthropic_format" => body["anthropic_format"] || false
+          "anthropic_format" => body["anthropic_format"] || false,
+          "provider_id"      => body["provider_id"].to_s.strip.then { |v| v.empty? ? nil : v }
         }
         type = body["type"].to_s
         unless type.empty?
@@ -5664,6 +5666,14 @@ module Clacky
         end
         if body.key?("anthropic_format")
           target["anthropic_format"] = !!body["anthropic_format"]
+        end
+        if body.key?("provider_id")
+          v = body["provider_id"].to_s.strip
+          if v.empty?
+            target.delete("provider_id")
+          else
+            target["provider_id"] = v
+          end
         end
         if body.key?("api_key")
           new_key = body["api_key"].to_s
@@ -5971,7 +5981,9 @@ module Clacky
 
         if model_name && !model_name.empty?
           info = agent.current_model_info
-          provider_id = info && Clacky::Providers.find_by_base_url(info[:base_url])
+          # Prefer explicitly saved provider_id, fall back to base_url lookup
+          provider_id = info&.dig(:provider_id).to_s.strip.then { |v| v.empty? ? nil : v }
+          provider_id ||= (info && Clacky::Providers.find_by_base_url(info[:base_url]))
           allowed = provider_id ? Clacky::Providers.models(provider_id) : []
           if allowed.empty?
             return json_response(res, 400, { error: "Current model has no provider preset; sub-model switching unavailable" })
