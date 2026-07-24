@@ -2553,10 +2553,14 @@ module Clacky
         end
 
         brand  = Clacky::BrandConfig.load
-        # Brand-private extensions (origin=self) are not visible via the public
-        # /api/v1/extensions/:id endpoint. Activated brand users must use the
-        # license-gated POST /api/v1/licenses/extension instead.
-        result = brand.activated? ? brand.brand_extension_detail!(id) : brand.extension_detail!(id)
+        # Always try the public endpoint first — it covers all marketplace
+        # extensions regardless of brand status. Only fall back to the
+        # license-gated brand endpoint when the public lookup fails (e.g. for
+        # origin=self brand-private extensions not exposed on the public API).
+        result = brand.extension_detail!(id)
+        if !result[:success] && brand.activated?
+          result = brand.brand_extension_detail!(id)
+        end
 
         if result[:success] && result[:extension]
           ext  = result[:extension]
